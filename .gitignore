@@ -1,0 +1,45 @@
+# ============================================================
+# Amazon ML Challenge 2026 — .gitignore
+# ============================================================
+
+# Raw data — never commit (large TSVs, datasets, zips inside Data/)
+Data/
+
+# Submission zips (regenerable via scripts/package_submission.py)
+*_submission.zip
+
+# Large files / model artifacts
+*.pkl
+*.joblib
+*.pt
+*.bin
+*.h5
+*.onnx
+*.safetensors
+*.npy
+*.npz
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo

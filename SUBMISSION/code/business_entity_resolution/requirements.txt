@@ -1,0 +1,23 @@
+# Amazon ML Challenge 2026 — Business Entity Resolution
+# Dependencies (pin exact versions before final submission)
+
+# Core
+pandas
+numpy
+tqdm
+
+# String matching
+rapidfuzz
+python-Levenshtein
+
+# ML
+scikit-learn
+xgboost
+lightgbm
+
+# NLP / Embeddings (uncomment as needed)
+# sentence-transformers
+# torch
+
+# Transliteration (uncomment as needed)
+# indic-transliteration
