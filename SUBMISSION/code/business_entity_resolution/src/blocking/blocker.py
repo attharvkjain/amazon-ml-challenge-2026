@@ -63,8 +63,9 @@ def _sparse_top_k(query_matrix: sparse.csr_matrix,
     n_queries = query_matrix.shape[0]
     n_index = index_matrix.shape[0]
     
-    # With max_df=0.01, the matrix is near 0% dense. We can safely use a massive batch size!
-    batch_size = 50_000
+    # With max_df=0.01, the matrix is 1.4% dense.
+    # 5000 queries * 800k = 4B pairs -> 56M non-zeros -> 450MB per thread (safe!).
+    batch_size = 5000
     
     n_jobs = max(1, multiprocessing.cpu_count() - 2)
     
