@@ -1,4 +1,4 @@
-> **Version:** v1.3 | **Last updated:** 2026-09-25 17:05 IST | **By:** Antigravity
+> **Version:** v2.0 | **Last updated:** 2026-09-26 00:25 IST | **By:** Antigravity
 
 # Problem Statement & Data
 
@@ -45,20 +45,8 @@ Each source file has **4 columns** (tab-separated `.tsv`):
 | India | 40.05% | 47.24% | Present in both |
 | France | 0.00% | 14.48% | ⚠️ **Zero-shot — test only!** |
 
-### File Paths (relative to repo root)
-
-```
-../Data/6ab10eb3b23ba_student_resource/student_resource/dataset/
-├── train/
-│   ├── train_source1.tsv
-│   ├── train_source2.tsv
-│   ├── train_source3.tsv
-│   └── train_ground_truth.tsv
-└── test/
-    ├── test_source1.tsv
-    ├── test_source2.tsv
-    └── test_source3.tsv
-```
+### File Paths
+> See [`environment-setup.md`](environment-setup.md) for canonical file paths and environment variables.
 
 ---
 
@@ -152,6 +140,7 @@ python ../Data/6ab10eb3b23ba_student_resource/student_resource/utils/validate_su
 | Version | Date | By | Summary |
 |---------|------|----|---------|
 | v1.3 | 2026-09-25 | Antigravity | Fixed test record counts to verified values: S1=1,732,544, S2=4,887,273, S3=5,082,316 (was off by 1-3) |
+| v2.0 | 2026-09-26 | Antigravity | Consolidated file paths to environment-setup.md to comply with Single Source of Truth Rule. |
 | v1.2 | 2026-09-25 | Antigravity | Added EDA-verified facts: country blocking safe, S1 100% Latin, non-Latin %, match stats, distractor rates, test S1 count discrepancy |
 | v1.1 | 2026-09-25 | Antigravity | Updated Constraints section with exact quotes from PDFs. Fixed REPO path references to SUBMISSION. |
 | v1.0 | 2026-09-25 | Member 1 | Initial skeleton with known details from problem statement |

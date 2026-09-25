@@ -1,4 +1,4 @@
-> **Version:** v2.3 | **Last updated:** 2026-09-25 19:30 IST | **By:** Antigravity
+> **Version:** v3.0 | **Last updated:** 2026-09-26 00:25 IST | **By:** Antigravity
 
 # Architecture — Business Entity Resolution Pipeline
 
@@ -167,26 +167,8 @@ flowchart LR
   - This validation set is used for threshold tuning and final model selection
   - CV on the 80% training portion handles model/feature selection
 
-**Key data facts (from EDA — grounded in actual analysis):**
-
-| Fact | Value | Source |
-|------|-------|--------|
-| Train S1 | 2,206,821 records | Direct measurement |
-| Train S2 | 5,034,616 records | Direct measurement |
-| Train S3 | 5,285,603 records | Direct measurement |
-| Test S1 | 1,732,544 records | Direct measurement |
-| Test S2 | 4,887,273 records | Direct measurement |
-| Test S3 | 5,082,316 records | Direct measurement |
-| Singletons (train) | 123,247 (5.58%) | Ground truth analysis |
-| Median matches per S1 | 4 | Ground truth analysis |
-| Max matches per S1 | 11 | Ground truth analysis |
-| 99.99th %ile matches | 10 | Ground truth analysis |
-| S2 per S1 (mean / max) | 1.77 / 5 | Ground truth analysis |
-| S3 per S1 (mean / max) | 1.89 / 6 | Ground truth analysis |
-| S2 distractors | 1,340,997 (26.6%) | Ground truth analysis |
-| S3 distractors | 1,340,857 (25.4%) | Ground truth analysis |
-| S2/S3 uniqueness | Each maps to exactly 1 S1 (0 duplicates) | Ground truth analysis |
-| Cross-country matches | **0 out of 7,638,365** | Full exhaustive check |
+**Key data facts:**
+> See [`problem-and-data.md`](problem-and-data.md) for the canonical dataset statistics, constraints, and distribution facts.
 
 ### Stage 2: Cleaning (`clean.py`)
 
@@ -582,15 +564,6 @@ Every training run should produce diagnostic outputs to guide architecture impro
 - ~5.6% of train S1 entities are singletons → all-singletons prediction scores ~0.056
 - This is the absolute floor. Any real model should vastly exceed it.
 
-### 8.3 Parallelization Across Team Members
-
-| Member | Track | Why |
-|--------|-------|-----|
-| Member 1 | Pipeline scaffolding (load → clean → blocking → output) | End-to-end pipeline is critical path |
-| Member 2 | Transliteration + EDA on Indic scripts | Quantify script breakdown, build ensemble |
-| Member 3 | Feature engineering + model training | Can start once blocking produces candidates |
-| Member 4 | Validation + submission tooling + diagnostics | Ensures we never submit broken files |
-
 ### 8.4 Data Leakage Checklist
 
 Before each experiment, verify:
@@ -637,6 +610,7 @@ Country partitioning reduces memory by ~60% compared to full dataset operations.
 ## Changelog
 | Version | Date | By | Summary |
 |---------|------|----|---------|
+| v3.0 | 2026-09-26 | Antigravity | Replaced data facts with canonical link and removed team split to align with Single Source of Truth Rule. |
 | v2.3 | 2026-09-25 | Antigravity | Updated Performance Principle to include pipeline caching/checkpointing |
 | v2.2 | 2026-09-25 | Antigravity | Updated Performance Principle to include proactive bottleneck resolution |
 | v2.1 | 2026-09-25 | Antigravity | Added performance principle requiring multiprocessing to maximize hardware utilization |

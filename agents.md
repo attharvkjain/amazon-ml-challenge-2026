@@ -1,4 +1,4 @@
-> **Version:** v1.7 | **Last updated:** 2026-09-25 19:39 IST | **By:** Antigravity
+> **Version:** v2.0 | **Last updated:** 2026-09-26 00:25 IST | **By:** Antigravity
 
 # AI Agent Operating Manual
 
@@ -93,9 +93,12 @@ python -m pytest SUBMISSION/code/business_entity_resolution/src/ -v
 ```python
 import pandas as pd
 
-# matching_results.tsv must have exactly 1,732,544 rows (one per S1 test entity)
+# matching_results.tsv must have one row per S1 test entity.
+# Check context/problem-and-data.md for canonical dataset statistics.
 df = pd.read_csv("SUBMISSION/output/matching_results.tsv", sep="\t")
-assert len(df) == 1_732_544, f"Expected 1,732,544 rows, got {len(df)}"
+test_s1 = pd.read_csv("Data/6ab10eb3b23ba_student_resource/student_resource/dataset/test/test_source1.tsv", sep="\t")
+expected_rows = len(test_s1)
+assert len(df) == expected_rows, f"Expected {expected_rows} rows, got {len(df)}"
 assert list(df.columns) == ["source1_entity_id", "matched_entity_ids"]
 ```
 
@@ -103,7 +106,7 @@ assert list(df.columns) == ["source1_entity_id", "matched_entity_ids"]
 
 ## Agent Skills
 
-This project provides several standard Agent Skills located in the `skills/` directory at the repo root. Use them when requested or when appropriate:
+This project provides several standard Agent Skills located in the `.agents/skills/` directory at the repo root. Use them when requested or when appropriate:
 
 - **`log-experiment`**: Logs a new experiment. Trigger when finishing a training run or explicitly asked.
 - **`validate-submission`**: Validates a submission payload. Trigger before creating a submission zip.
@@ -127,7 +130,7 @@ This project provides several standard Agent Skills located in the `skills/` dir
 - **Use `sep='\t'`** for all data file I/O — files are tab-separated, not comma-separated
 - **Leave a note** if you modify a teammate's work-in-progress file
 - **Context Updation Rule:** Whenever the human explicitly states to "update the project context fully", you MUST systematically go through and update `agents.md`, `project.md`, and any relevant files in the `context/` directory to reflect the current state of the project.
-- **Proactive Bottleneck Resolution:** If any pipeline stage takes an unreasonably long time, stop it immediately, identify the bottleneck (e.g., replace `iterrows` with `itertuples`, add `loky` multiprocessing), refactor the code, and restart. Always proactively review code for performance bottlenecks before execution to ensure the fastest possible runtime given the goals.
+- **Proactive Bottleneck Resolution:** If any pipeline stage takes an unreasonably long time, stop it immediately, identify the bottleneck (e.g., replace `iterrows` with `itertuples`, add `loky` multiprocessing), refactor the code, and restart. **CRITICAL:** Any performance rewrite must be verified to produce identical (or score-identical) output on a small sample before being trusted at full scale. Always proactively review code for performance bottlenecks before execution to ensure the fastest possible runtime given the goals.
 - **Pipeline Caching:** Always save intermediate assets (models, extracted features, candidate pairs) to disk using `pickle` or `joblib`. If the pipeline crashes or is interrupted, reload from the latest checkpoint instead of recomputing from scratch.
 - **Log Pitfalls:** Append any errors, crashes, bugs, performance bottlenecks, or tricky design issues you encounter and resolve to `context/challenges_faced.md`.
 
@@ -184,6 +187,7 @@ Specifically:
 
 | Version | Date | By | Summary |
 |---------|------|----|---------|
+| v2.0 | 2026-09-26 | Antigravity | Updated Agent Skills path, removed hardcoded test row count, and added verification requirement to Bottleneck rule. |
 | v1.7 | 2026-09-25 | Antigravity | Added Log Pitfalls rule to record issues in challenges_faced.md |
 | v1.6 | 2026-09-25 | Antigravity | Added Pipeline Caching rule to Do's to prevent lost work during crashes |
 | v1.5 | 2026-09-25 | Antigravity | Added Proactive Bottleneck Resolution rule to ensure maximum performance and prompt interruption of slow runs |

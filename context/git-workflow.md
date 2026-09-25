@@ -1,4 +1,4 @@
-> **Version:** v1.0 | **Last updated:** 2026-09-25 02:30 IST | **By:** Member 1
+> **Version:** v2.0 | **Last updated:** 2026-09-26 00:25 IST | **By:** Antigravity
 
 # Git Workflow
 
@@ -88,6 +88,7 @@ git commit -m "[exp] run baseline blocking experiment"
 
 During the final push:
 
+- **Hard Code Freeze at 5:00 PM IST on Day 3 (4 hours before deadline).** No more experimental merges or new features are allowed. This block of time is exclusively reserved for full-scale model training and inference on the test set.
 - Self-merge is allowed with a PR comment
 - Skip squash if faster — but write clear commit messages
 - Prioritize getting the best `matching_results.tsv` submitted over clean git history
@@ -99,4 +100,5 @@ During the final push:
 
 | Version | Date | By | Summary |
 |---------|------|----|---------|
+| v2.0 | 2026-09-26 | Antigravity | Added hard code-freeze policy for the final 4 hours to reserve time for full-scale training and inference. |
 | v1.0 | 2026-09-25 | Member 1 | Initial skeleton created |

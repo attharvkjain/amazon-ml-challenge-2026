@@ -114,7 +114,7 @@ def extract_features(
     
     # Using 'loky' backend for true multiprocessing. Pickling overhead is small
     # compared to the massive speedup of avoiding GIL and iterrows overhead.
-    results_list = Parallel(n_jobs=n_jobs, backend='loky')(
+    results_list = Parallel(n_jobs=n_jobs, backend='threading')(
         delayed(_extract_chunk)(chunk, s1_lookup, s2s3_lookup) for chunk in chunks
     )
 
