@@ -19,7 +19,7 @@ import zipfile
 from pathlib import Path
 
 WORKSPACE_ROOT = Path(__file__).resolve().parent.parent
-REPO_DIR = WORKSPACE_ROOT / "REPO"
+SUBMISSION_DIR = WORKSPACE_ROOT / "SUBMISSION"
 
 REQUIRED_FILES = [
     "output/matching_results.tsv",
@@ -40,10 +40,10 @@ def package(team_name: str) -> None:
     zip_path = WORKSPACE_ROOT / zip_name
 
     # ── Check required files ──
-    missing = [f for f in REQUIRED_FILES if not (REPO_DIR / f).exists()]
+    missing = [f for f in REQUIRED_FILES if not (SUBMISSION_DIR / f).exists()]
 
     # Check that src/ has at least one .py file
-    src_path = REPO_DIR / SRC_DIR
+    src_path = SUBMISSION_DIR / SRC_DIR
     py_files = list(src_path.rglob("*.py")) if src_path.exists() else []
     if not py_files:
         missing.append(f"{SRC_DIR}/*.py (no Python files found)")
@@ -59,12 +59,12 @@ def package(team_name: str) -> None:
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
         # Add required files
         for f in REQUIRED_FILES:
-            zf.write(REPO_DIR / f, f)
+            zf.write(SUBMISSION_DIR / f, f)
 
         # Add all files under code/business_entity_resolution/src/
         for file_path in src_path.rglob("*"):
             if file_path.is_file() and file_path.name not in SKIP_NAMES:
-                arcname = str(file_path.relative_to(REPO_DIR))
+                arcname = str(file_path.relative_to(SUBMISSION_DIR))
                 zf.write(file_path, arcname)
 
     size_kb = zip_path.stat().st_size / 1024

@@ -1,4 +1,4 @@
-> **Version:** v1.1 | **Last updated:** 2026-09-25 03:10 IST | **By:** Member 1
+> **Version:** v1.4 | **Last updated:** 2026-09-25 14:26 IST | **By:** Antigravity
 
 # Amazon ML Challenge 2026 — Project Master Index
 
@@ -39,8 +39,10 @@
 |------|------|-------------|
 | [`project.md`](project.md) | File | **This file** — master index, single source of truth |
 | [`agents.md`](agents.md) | File | Operating manual for AI coding agents |
-| [`REPO/Documentation_template.md`](REPO/Documentation_template.md) | File | Methodology write-up for final submission (official template) |
-| [`context/problem-and-data.md`](context/problem-and-data.md) | File | Problem statement, dataset schema, eval metric, data quirks |
+| [`SUBMISSION/Documentation_template.md`](SUBMISSION/Documentation_template.md) | File | Methodology write-up for final submission (official template) |
+| [`context/problem-and-data.md`](context/problem-and-data.md) | File | Problem statement, dataset schema, eval metric, constraints, data quirks |
+| [`context/past-challenges-reference.md`](context/past-challenges-reference.md) | File | Prior-year reference of winning approaches and common pitfalls |
+| [`skills/`](skills/) | Folder | Canonical provider-agnostic Agent Skills folder |
 | [`context/eda-findings.md`](context/eda-findings.md) | File | Dated log of EDA insights |
 | [`context/environment-setup.md`](context/environment-setup.md) | File | Local environment reproduction steps per teammate |
 | [`context/experiment-log.md`](context/experiment-log.md) | File | **APPEND-ONLY** — every approach tried, params, CV score, commit |
@@ -48,10 +50,10 @@
 | [`context/git-workflow.md`](context/git-workflow.md) | File | Branch naming, PR/merge rules, notebook conflict prevention |
 | [`context/team-roles.md`](context/team-roles.md) | File | Team member roles, focus areas, availability during 72h |
 | [`context/writeup-draft.md`](context/writeup-draft.md) | File | Living draft of the methodology document (internal WIP) |
-| [`REPO/code/business_entity_resolution/src/`](REPO/code/business_entity_resolution/src/) | Folder | **All pipeline source code** — submission package location |
-| [`REPO/code/business_entity_resolution/README.md`](REPO/code/business_entity_resolution/README.md) | File | Reproduction instructions (ships in submission zip) |
-| [`REPO/code/business_entity_resolution/requirements.txt`](REPO/code/business_entity_resolution/requirements.txt) | File | Pinned dependencies (ships in submission zip) |
-| [`REPO/output/`](REPO/output/) | Folder | Submission output files (`matching_results.tsv`, `candidate_pairs.tsv`) |
+| [`SUBMISSION/code/business_entity_resolution/src/`](SUBMISSION/code/business_entity_resolution/src/) | Folder | **All pipeline source code** — submission package location |
+| [`SUBMISSION/code/business_entity_resolution/README.md`](SUBMISSION/code/business_entity_resolution/README.md) | File | Reproduction instructions (ships in submission zip) |
+| [`SUBMISSION/code/business_entity_resolution/requirements.txt`](SUBMISSION/code/business_entity_resolution/requirements.txt) | File | Pinned dependencies (ships in submission zip) |
+| [`SUBMISSION/output/`](SUBMISSION/output/) | Folder | Submission output files (`matching_results.tsv`, `candidate_pairs.tsv`) |
 | [`scripts/package_submission.py`](scripts/package_submission.py) | File | Creates the submission zip from repo contents |
 | [`Analysis and Research/`](Analysis%20and%20Research/) | Folder | Pre-competition analysis & winner playbook (existing) |
 | [`Data/`](Data/) | Folder | Raw dataset — **DO NOT commit to git** (in `.gitignore`) |
@@ -86,7 +88,7 @@
 - Type hints encouraged
 - f-strings over `.format()`
 - All data files are **tab-separated** — always use `sep='\t'` when reading/writing
-- Keep logic in `.py` modules under `REPO/code/business_entity_resolution/src/`; use thin Jupyter notebooks for exploration only
+- Keep logic in `.py` modules under `SUBMISSION/code/business_entity_resolution/src/`; use thin Jupyter notebooks for exploration only
 
 ### Commit & Branch Conventions
 
@@ -99,7 +101,7 @@
 
 - **Never commit raw data or large model files.** The `Data/` folder is in `.gitignore`.
 - Model weights, pickled objects, and other large artifacts must not be committed (blocked by `.gitignore`).
-- Submission output files in `REPO/output/` **are tracked** — push them so teammates can pull the latest results.
+- Submission output files in `SUBMISSION/output/` **are tracked** — push them so teammates can pull the latest results.
 - Each teammate stores the dataset locally; see [`context/environment-setup.md`](context/environment-setup.md) for expected paths.
 
 ---
@@ -112,10 +114,10 @@
 
 **By:** Member 1
 
-- Source code now lives at `REPO/code/business_entity_resolution/src/` (matches the official submission zip structure).
+- Source code now lives at `SUBMISSION/code/business_entity_resolution/src/` (matches the official submission zip structure).
 - Old top-level `src/` removed (was empty).
-- `REPO/Documentation_template.md` added at repo root (official template for methodology write-up).
-- `.gitignore` relaxed: `REPO/output/` and `.tsv` submission files are now tracked in git.
+- `SUBMISSION/Documentation_template.md` added at repo root (official template for methodology write-up).
+- `.gitignore` relaxed: `SUBMISSION/output/` and `.tsv` submission files are now tracked in git.
 - Added `scripts/package_submission.py` to generate the submission zip.
 
 ### 2026-09-25 — Project initialized
@@ -181,5 +183,6 @@ With 4 people and multiple AI agents editing docs during a 72-hour hackathon, we
 
 | Version | Date | By | Summary |
 |---------|------|----|---------|
+| v1.4 | 2026-09-25 | Antigravity | Added skills/ and past-challenges-reference.md to Master Index. Fixed REPO path references to SUBMISSION. |
 | v1.1 | 2026-09-25 | Member 1 | Restructured repo to match submission package layout; updated master index, .gitignore, code paths |
 | v1.0 | 2026-09-25 | Member 1 | Initial skeleton created |

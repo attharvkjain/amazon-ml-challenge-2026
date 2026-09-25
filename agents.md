@@ -1,4 +1,4 @@
-> **Version:** v1.1 | **Last updated:** 2026-09-25 03:10 IST | **By:** Member 1
+> **Version:** v1.3 | **Last updated:** 2026-09-25 14:27 IST | **By:** Antigravity
 
 # AI Agent Operating Manual
 
@@ -42,7 +42,7 @@ python -m venv .venv
 source .venv/bin/activate
 
 # Install dependencies (when requirements.txt exists)
-pip install -r REPO/code/business_entity_resolution/requirements.txt
+pip install -r SUBMISSION/code/business_entity_resolution/requirements.txt
 ```
 
 ### Data Location
@@ -74,8 +74,8 @@ Before considering any task done, confirm your changes didn't break the pipeline
 
 ```bash
 python Data/6ab10eb3b23ba_student_resource/student_resource/utils/validate_submission.py \
-    --matching REPO/output/matching_results.tsv \
-    --candidate REPO/output/candidate_pairs.tsv \
+    --matching SUBMISSION/output/matching_results.tsv \
+    --candidate SUBMISSION/output/candidate_pairs.tsv \
     --test-dir Data/6ab10eb3b23ba_student_resource/student_resource/dataset/test
 ```
 
@@ -85,7 +85,7 @@ Must print `PASS` (exit 0). If it fails, fix before proceeding.
 
 ```bash
 # When unit tests exist in src/
-python -m pytest REPO/code/business_entity_resolution/src/ -v
+python -m pytest SUBMISSION/code/business_entity_resolution/src/ -v
 ```
 
 ### 3. Check Output Shape
@@ -94,10 +94,23 @@ python -m pytest REPO/code/business_entity_resolution/src/ -v
 import pandas as pd
 
 # matching_results.tsv must have exactly 1,732,545 rows (one per S1 test entity)
-df = pd.read_csv("REPO/output/matching_results.tsv", sep="\t")
+df = pd.read_csv("SUBMISSION/output/matching_results.tsv", sep="\t")
 assert len(df) == 1_732_545, f"Expected 1,732,545 rows, got {len(df)}"
 assert list(df.columns) == ["source1_entity_id", "matched_entity_ids"]
 ```
+
+---
+
+## Agent Skills
+
+This project provides several standard Agent Skills located in the `skills/` directory at the repo root. Use them when requested or when appropriate:
+
+- **`log-experiment`**: Logs a new experiment. Trigger when finishing a training run or explicitly asked.
+- **`validate-submission`**: Validates a submission payload. Trigger before creating a submission zip.
+- **`eda-report`**: Logs an EDA report. Trigger when completing data exploration or asked to log findings.
+- **`notebook-to-script`**: Extracts notebook logic to a script. Trigger when modularizing code or before committing a notebook.
+- **`new-experiment`**: Scaffolds a new experiment. Trigger when starting a new approach.
+- **`sync-writeup`**: Pulls the best score into the writeup draft. Trigger when asked to sync the methodology doc.
 
 ---
 
@@ -113,10 +126,12 @@ assert list(df.columns) == ["source1_entity_id", "matched_entity_ids"]
 - **Check the Current State Snapshot** before claiming a result is "better"
 - **Use `sep='\t'`** for all data file I/O — files are tab-separated, not comma-separated
 - **Leave a note** if you modify a teammate's work-in-progress file
+- **Context Updation Rule:** Whenever the human explicitly states to "update the project context fully", you MUST systematically go through and update `agents.md`, `project.md`, and any relevant files in the `context/` directory to reflect the current state of the project.
 
 ### ❌ DON'T
 
 - **Never edit or delete existing rows** in `context/experiment-log.md` or `context/submission-log.md` — these are **append-only** logs
+- **Never silently overwrite a better logged result** — only update the Current State Snapshot if the new score actually beats the existing best
 - **Never touch raw data files** in `Data/` — read-only access only
 - **Never commit large files** (model weights, pickled objects, datasets) — they are in `.gitignore`
 - **Never modify a teammate's in-progress notebook** without leaving a clearly visible note explaining what you changed and why
@@ -166,5 +181,7 @@ Specifically:
 
 | Version | Date | By | Summary |
 |---------|------|----|---------|
-| v1.1 | 2026-09-25 | Member 1 | Updated paths to match submission package layout (REPO/code/business_entity_resolution/src/) |
+| v1.3 | 2026-09-25 | Antigravity | Added Agent Skills section and updated rules on not overwriting better scores. Fixed REPO path references to SUBMISSION. |
+| v1.2 | 2026-09-25 | Antigravity | Added Context Updation Rule |
+| v1.1 | 2026-09-25 | Member 1 | Updated paths to match submission package layout (SUBMISSION/code/business_entity_resolution/src/) |
 | v1.0 | 2026-09-25 | Member 1 | Initial skeleton created |

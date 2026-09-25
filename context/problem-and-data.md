@@ -1,4 +1,4 @@
-> **Version:** v1.0 | **Last updated:** 2026-09-25 02:30 IST | **By:** Member 1
+> **Version:** v1.1 | **Last updated:** 2026-09-25 14:27 IST | **By:** Antigravity
 
 # Problem Statement & Data
 
@@ -78,7 +78,7 @@ F₀.₅ = (1.25 × Precision × Recall) / (0.25 × Precision + Recall)
 
 ## Output Format
 
-Two tab-separated files in `REPO/output/`:
+Two tab-separated files in `SUBMISSION/output/`:
 
 ### `matching_results.tsv` (scored on leaderboard)
 
@@ -98,8 +98,8 @@ Same format, column `candidate_entity_ids` — the candidate set before final ma
 
 ```bash
 python ../Data/6ab10eb3b23ba_student_resource/student_resource/utils/validate_submission.py \
-    --matching REPO/REPO/output/matching_results.tsv \
-    --candidate REPO/REPO/output/candidate_pairs.tsv \
+    --matching SUBMISSION/SUBMISSION/output/matching_results.tsv \
+    --candidate SUBMISSION/SUBMISSION/output/candidate_pairs.tsv \
     --test-dir ../Data/6ab10eb3b23ba_student_resource/student_resource/dataset/test
 ```
 
@@ -107,9 +107,15 @@ python ../Data/6ab10eb3b23ba_student_resource/student_resource/utils/validate_su
 
 ## Constraints
 
-- Model ≤ **8 billion parameters**
-- **MIT or Apache 2.0 license** only
-- **No external data** (APIs, geocoding, business registries, etc.)
+**Hard Constraints & Rules (Extracted from official docs):**
+- **Model Size & License:** "Final model should be a MIT/Apache 2.0 License model and up to 8 Billion parameters."
+- **External Data:** "STRICTLY NOT ALLOWED to use external databases, APIs, or services to look up business identities or resolve entities... Any evidence of external data lookup will result in immediate disqualification."
+- **Submission Limits:** "Each team can make a maximum of 5 submissions per day for over 3 days of the hackathon."
+- **Deadlines:** "Challenge Window: 25th September 2026, 12:00 AM IST to 27th September 2026, 11:59 PM IST."
+- **Output Requirements:**
+  1. "`matched_entity_ids` must only reference entities from Source 2 or Source 3. Self-matches to Source 1, and IDs that do not exist in the test set, will be rejected."
+  2. "Every Source 1 entity must appear in your submission. Missing entities will cause rejection."
+  3. "Duplicate entity IDs in any ID list will cause rejection, as will duplicate `source1_entity_id` rows."
 
 ---
 
@@ -135,4 +141,5 @@ python ../Data/6ab10eb3b23ba_student_resource/student_resource/utils/validate_su
 
 | Version | Date | By | Summary |
 |---------|------|----|---------|
+| v1.1 | 2026-09-25 | Antigravity | Updated Constraints section with exact quotes from PDFs. Fixed REPO path references to SUBMISSION. |
 | v1.0 | 2026-09-25 | Member 1 | Initial skeleton with known details from problem statement |

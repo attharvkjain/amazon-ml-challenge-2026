@@ -20,4 +20,4 @@ lightgbm
 # torch
 
 # Transliteration (uncomment as needed)
-# indic-transliteration
+indic-transliteration
