@@ -1,4 +1,4 @@
-> **Version:** v2.0 | **Last updated:** 2026-09-26 00:25 IST | **By:** Antigravity
+> **Version:** v3.1 | **Last updated:** 2026-09-26 02:30 IST | **By:** Codex
 
 # AI Agent Operating Manual
 
@@ -18,7 +18,7 @@ When you start working on any task for this project, follow these steps **in ord
 
 1. **Read [`project.md`](project.md)** — understand the project, check the Current State Snapshot, review the Master Index.
 2. **Locate the relevant file(s)** from the Master Index table in `project.md` for your specific task.
-3. **Read only the relevant file(s)** in `context/` — don't load everything, just what you need.
+3. **Read only the relevant file(s)** in `context/` for ordinary work. For reconciliation, read `project.md`, `agents.md`, and every file in `context/` in full before auditing.
 4. **Check [`context/experiment-log.md`](context/experiment-log.md)** if your task involves modeling — someone may have already tried your approach.
 5. **Check [`context/submission-log.md`](context/submission-log.md)** if your task involves a submission — never submit worse than the current best.
 6. **Never assume.** If information you need isn't in the docs, say so explicitly. Ask the human — don't infer.
@@ -47,7 +47,7 @@ pip install -r SUBMISSION/code/business_entity_resolution/requirements.txt
 
 ### Data Location
 
-The dataset is stored locally in `Data/6ab10eb3b23ba_student_resource/student_resource/dataset/` and is **not** committed to git. Each teammate has it at the same relative path. Key files:
+The dataset is stored locally in `data/6ab10eb3b23ba_student_resource/student_resource/dataset/` and is **not** committed to git. Each teammate has it at the same relative path. Key files:
 
 - `dataset/train/train_source1.tsv` — Source 1 training records
 - `dataset/train/train_source2.tsv` — Source 2 training records
@@ -61,7 +61,7 @@ The dataset is stored locally in `Data/6ab10eb3b23ba_student_resource/student_re
 
 ```python
 import pandas as pd
-df = pd.read_csv("Data/6ab10eb3b23ba_student_resource/student_resource/dataset/train/train_source1.tsv", sep="\t")
+df = pd.read_csv("data/6ab10eb3b23ba_student_resource/student_resource/dataset/train/train_source1.tsv", sep="\t")
 ```
 
 ---
@@ -73,10 +73,10 @@ Before considering any task done, confirm your changes didn't break the pipeline
 ### 1. Validate Submission Format
 
 ```bash
-python Data/6ab10eb3b23ba_student_resource/student_resource/utils/validate_submission.py \
+python data/6ab10eb3b23ba_student_resource/student_resource/utils/validate_submission.py \
     --matching SUBMISSION/output/matching_results.tsv \
     --candidate SUBMISSION/output/candidate_pairs.tsv \
-    --test-dir Data/6ab10eb3b23ba_student_resource/student_resource/dataset/test
+    --test-dir data/6ab10eb3b23ba_student_resource/student_resource/dataset/test
 ```
 
 Must print `PASS` (exit 0). If it fails, fix before proceeding.
@@ -96,7 +96,7 @@ import pandas as pd
 # matching_results.tsv must have one row per S1 test entity.
 # Check context/problem-and-data.md for canonical dataset statistics.
 df = pd.read_csv("SUBMISSION/output/matching_results.tsv", sep="\t")
-test_s1 = pd.read_csv("Data/6ab10eb3b23ba_student_resource/student_resource/dataset/test/test_source1.tsv", sep="\t")
+test_s1 = pd.read_csv("data/6ab10eb3b23ba_student_resource/student_resource/dataset/test/test_source1.tsv", sep="\t")
 expected_rows = len(test_s1)
 assert len(df) == expected_rows, f"Expected {expected_rows} rows, got {len(df)}"
 assert list(df.columns) == ["source1_entity_id", "matched_entity_ids"]
@@ -106,7 +106,7 @@ assert list(df.columns) == ["source1_entity_id", "matched_entity_ids"]
 
 ## Agent Skills
 
-This project provides several standard Agent Skills located in the `.agents/skills/` directory at the repo root. Use them when requested or when appropriate:
+The canonical, tracked Agent Skills live in `skills/`; provider directories mirror the canonical files for agent discovery; maintain skills in `skills/`. Use skills when requested or when appropriate:
 
 - **`log-experiment`**: Logs a new experiment. Trigger when finishing a training run or explicitly asked.
 - **`validate-submission`**: Validates a submission payload. Trigger before creating a submission zip.
@@ -114,6 +114,7 @@ This project provides several standard Agent Skills located in the `.agents/skil
 - **`notebook-to-script`**: Extracts notebook logic to a script. Trigger when modularizing code or before committing a notebook.
 - **`new-experiment`**: Scaffolds a new experiment. Trigger when starting a new approach.
 - **`sync-writeup`**: Pulls the best score into the writeup draft. Trigger when asked to sync the methodology doc.
+- **`reconcile-project`**: Audits documentation against the live repository, applies approved DOC-ONLY fixes, and gates CODE-ADJACENT changes on item-specific approval.
 
 ---
 
@@ -138,13 +139,14 @@ This project provides several standard Agent Skills located in the `.agents/skil
 
 - **Never edit or delete existing rows** in `context/experiment-log.md` or `context/submission-log.md` — these are **append-only** logs
 - **Never silently overwrite a better logged result** — only update the Current State Snapshot if the new score actually beats the existing best
-- **Never touch raw data files** in `Data/` — read-only access only
+- **Never touch raw data files** in `data/` — read-only access only
 - **Never commit large files** (model weights, pickled objects, datasets) — they are in `.gitignore`
 - **Never modify a teammate's in-progress notebook** without leaving a clearly visible note explaining what you changed and why
 - **Never guess or infer** when information is missing — say "not in the docs" and ask
 - **Never assume the data is comma-separated** — it's tab-separated
 - **Never hardcode** the country list to `{US, India}` — the test set includes France (zero-shot)
 - **Never skip the versioning rule** — see below
+- Run reconciliation after every leaderboard submission, major architecture revision, and before final packaging or handoff; also run it when official rules or data paths change.
 
 ---
 
@@ -165,6 +167,8 @@ Every markdown file ends with a `## Changelog` section (newest entry on top):
 |---------|------|----|---------|
 | vX.Y | YYYY-MM-DD | Name | What changed |
 ```
+
+For Agent Skill `SKILL.md` files, valid YAML frontmatter remains first. Put the standard version line immediately after the closing frontmatter fence and keep the changelog at the end.
 
 **Any content edit bumps the version and adds a changelog line.** No exceptions.
 
@@ -187,6 +191,8 @@ Specifically:
 
 | Version | Date | By | Summary |
 |---------|------|----|---------|
+| v3.1 | 2026-09-26 | Codex | Clarified that provider skill folders are discovery mirrors of the canonical `skills/` directory. |
+| v3.0 | 2026-09-26 | Codex | Added reconciliation bootstrap/trigger guidance and skill, corrected active lowercase data and canonical skills paths. |
 | v2.0 | 2026-09-26 | Antigravity | Updated Agent Skills path, removed hardcoded test row count, and added verification requirement to Bottleneck rule. |
 | v1.7 | 2026-09-25 | Antigravity | Added Log Pitfalls rule to record issues in challenges_faced.md |
 | v1.6 | 2026-09-25 | Antigravity | Added Pipeline Caching rule to Do's to prevent lost work during crashes |

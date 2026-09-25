@@ -1,4 +1,4 @@
-> **Version:** v1.1 | **Last updated:** 2026-09-25 14:28 IST | **By:** Antigravity
+> **Version:** v1.3 | **Last updated:** 2026-09-26 02:30 IST | **By:** Codex
 
 # Environment Setup
 
@@ -34,12 +34,12 @@ python -m venv .venv
 source .venv/bin/activate
 
 # 4. Install dependencies (when requirements.txt is available)
-pip install -r requirements.txt
+pip install -r SUBMISSION/code/business_entity_resolution/requirements.txt
 
-# 5. Data setup — download/unzip the student resource into Data/
+# 5. Data setup — download/unzip the student resource into `data/` (see canonical paths below)
 # Expected path after setup:
-#   Data/6ab10eb3b23ba_student_resource/student_resource/dataset/train/
-#   Data/6ab10eb3b23ba_student_resource/student_resource/dataset/test/
+#   data/6ab10eb3b23ba_student_resource/student_resource/dataset/train/
+#   data/6ab10eb3b23ba_student_resource/student_resource/dataset/test/
 ```
 
 ---
@@ -89,12 +89,12 @@ pip install -r requirements.txt
 
 ## Data Setup
 
-The dataset is **not committed to git** (`.gitignore` excludes `Data/` and `*.tsv`). Each teammate must have the data locally.
+The dataset is **not committed to git**; `.gitignore` excludes the checked-out `data/` directory. Submission TSV handling is documented separately in `project.md`.
 
 ### Expected directory structure
 
 ```
-Data/6ab10eb3b23ba_student_resource/student_resource/
+data/6ab10eb3b23ba_student_resource/student_resource/
 ├── dataset/
 │   ├── train/
 │   │   ├── train_source1.tsv      (Source 1 training — 2.2M records)
@@ -126,5 +126,7 @@ Data/6ab10eb3b23ba_student_resource/student_resource/
 
 | Version | Date | By | Summary |
 |---------|------|----|---------|
+| v1.3 | 2026-09-26 | Codex | Corrected the remaining setup example to the active lowercase data directory. |
+| v1.2 | 2026-09-26 | Codex | Corrected lowercase data paths and the packaged requirements installation path. |
 | v1.1 | 2026-09-25 | Antigravity | Added exact environment specs for Kingapplefruit. |
 | v1.0 | 2026-09-25 | Member 1 | Initial skeleton created |

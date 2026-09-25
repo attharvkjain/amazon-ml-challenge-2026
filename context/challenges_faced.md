@@ -1,4 +1,4 @@
-> **Version:** v1.6 | **Last updated:** 2026-09-26 01:05 IST | **By:** Antigravity
+> **Version:** v1.7 | **Last updated:** 2026-09-26 02:07 IST | **By:** Codex
 
 # Challenges, Pitfalls, and Resolutions
 
@@ -28,7 +28,7 @@ This document logs all errors, crashes, performance bottlenecks, and design issu
 
 ## 6. Massive 30-Hour Inference Time on Test Set
 - **Problem:** After solving the OOMs, the pipeline ran successfully but was projected to take ~30 hours to finish the Test Set. The bottleneck was `blocker.py`: using `analyzer='char_wb'` and `ngram_range=(3,3)` creates massive overlap between businesses. Slicing 10 million companies into character 3-grams generated a 70% dense sparse matrix, requiring over 10 Trillion mathematical dot-products for the US and India, taking 29 hours.
-- **Resolution:** Pivoted the Test Set inference to use **Word Unigrams** (`analyzer='word'`, `ngram_range=(1,1)`). Because random companies rarely share exact words (unless generic, which `max_df=0.25` handles), the matrix density plummeted to `<0.1%`. This sped up the dot product by 100x, allowing inference to finish in under 30 minutes! While it slightly reduces candidate recall on severe typos, the speedup is critical for the hackathon crunch.
+- **Resolution:** Pivoted the Test Set inference to use **Word Unigrams** (`analyzer='word'`, `ngram_range=(1,1)`). At the time, the run used `max_df=0.25`; the current baseline setting is `max_df=0.01` in `src/blocking/blocker.py`. Because random companies rarely share exact words (unless generic), the matrix density plummeted to `<0.1%`. This sped up the dot product by 100x, allowing inference to finish in under 30 minutes! While it slightly reduces candidate recall on severe typos, the speedup was critical for the hackathon crunch.
 
 ## 7. Pandas BlockManager 6GB RAM Spike
 - **Problem:** When collecting the 94 Million India candidate pairs into a `pd.DataFrame` during blocking, the pipeline repeatedly crashed with `std::bad_alloc` `ArrayMemoryError: Unable to allocate 1.43 GiB for an array...`. Pandas' internal `BlockManager` attempts to aggressively merge contiguous string/object columns into a single 2D Numpy array block of pointers. Trying to merge `s1_id`, `s2s3_id`, `source`, and `country` created a 1.5GB pointer block requirement that Windows could not physically contiguous-allocate. Additionally, passing `np.array(s1_ids)[...]` instantiated a 6GB unicode string array in RAM before Pandas even touched it.
@@ -41,6 +41,7 @@ This document logs all errors, crashes, performance bottlenecks, and design issu
 ## Changelog
 | Version | Date | By | Summary |
 |---------|------|----|---------|
+| v1.7 | 2026-09-26 | Codex | Clarified the historical max_df setting versus the current baseline value. |
 | v1.6 | 2026-09-26 | Antigravity | Added Issues 7 & 8 (Pandas BlockManager memory limit, Loky Pickling Error limit) |
 | v1.5 | 2026-09-25 | Antigravity | Added Issue #6 (Inference speedup via Word Unigrams pivot) |
 | v1.4 | 2026-09-25 | Antigravity | Updated Issue #4 with the dynamic batch sizing resolution for dense sparse matrices |

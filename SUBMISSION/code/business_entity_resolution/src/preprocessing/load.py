@@ -116,6 +116,20 @@ def load_train_data(
     # ── Train / Val split (stratified by country on S1) ────────────────────
     print(f"[load] Creating {1-val_frac:.0%}/{val_frac:.0%} train/val split ...")
 
+    if val_frac == 0.0:
+        print(f"[load] val_frac=0.0, returning all data as training data ...")
+        return {
+            "train_s1": s1.reset_index(drop=True),
+            "train_s2": s2.reset_index(drop=True),
+            "train_s3": s3.reset_index(drop=True),
+            "train_gt": gt,
+            "val_s1": pd.DataFrame(columns=s1.columns),
+            "val_s2": pd.DataFrame(columns=s2.columns),
+            "val_s3": pd.DataFrame(columns=s3.columns),
+            "val_gt": {},
+            "full_gt": gt,
+        }
+
     # Stratified split on S1 by country
     train_s1, val_s1 = train_test_split(
         s1,

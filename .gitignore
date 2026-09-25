@@ -9,6 +9,7 @@ past submissions (to be configured)/
 
 # Large generated audit/cache artifacts; keep leaderboard output trackable.
 SUBMISSION/output/candidate_pairs.tsv
+SUBMISSION/output/matching_results.tsv
 SUBMISSION/output/model_threshold.txt
 SUBMISSION/code/business_entity_resolution/cache/
 
@@ -45,3 +46,6 @@ desktop.ini
 .idea/
 *.swp
 *.swo
+
+# Local historical drafts and reference artifacts
+miscelleaneous/

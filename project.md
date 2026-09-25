@@ -1,4 +1,4 @@
-> **Version:** v2.1 | **Last updated:** 2026-09-26 01:05 IST | **By:** Antigravity
+> **Version:** v3.2 | **Last updated:** 2026-09-26 02:50 IST | **By:** Codex
 
 # Amazon ML Challenge 2026 — Project Master Index
 
@@ -14,20 +14,13 @@
 | **Problem** | Business Entity Resolution — given business records from 3 independent data sources with noisy/inconsistent fields, determine which records across sources refer to the same real-world business entity |
 | **Task** | Match Source 2 and Source 3 records to deduplicated Source 1 reference entities |
 | **Evaluation Metric** | F₀.₅ (precision-heavy, macro-averaged per S1 entity) |
-| **Hackathon Window** | Sep 25, 2026 9:00 AM IST – Sep 27, 2026 9:00 PM IST (72 hours) |
-| **Submission Format** | `matching_results.tsv` (leaderboard upload) + `candidate_pairs.tsv` + code zip + methodology doc |
+| **Hackathon Window** | See official window in [`context/problem-and-data.md`](context/problem-and-data.md) |
+| **Submission Format** | `matching_results.tsv` leaderboard payload; see official requirements and submission history for packaging details |
 | **Constraints** | See [`context/problem-and-data.md`](context/problem-and-data.md) |
 
 ### Team
 
-| Member | Role | Contact |
-|--------|------|---------|
-| Member 1 | TBD | TBD |
-| Member 2 | TBD | TBD |
-| Member 3 | TBD | TBD |
-| Member 4 | TBD | TBD |
-
-> See [`context/team-roles.md`](context/team-roles.md) for detailed roles, focus areas, and availability.
+> Team roster, roles, contacts, and availability: see [`context/team-roles.md`](context/team-roles.md).
 
 ---
 
@@ -42,7 +35,7 @@
 | [`SUBMISSION/Documentation_template.md`](SUBMISSION/Documentation_template.md) | File | Methodology write-up for final submission (official template) |
 | [`context/problem-and-data.md`](context/problem-and-data.md) | File | Problem statement, dataset schema, eval metric, constraints, data quirks |
 | [`context/past-challenges-reference.md`](context/past-challenges-reference.md) | File | Prior-year reference of winning approaches and common pitfalls |
-| [`.agents/skills/`](.agents/skills/) | Folder | Canonical provider-agnostic Agent Skills folder |
+| [`skills/`](skills/) | Folder | Canonical tracked, provider-agnostic Agent Skills folder; provider directories mirror the canonical files for agent discovery; maintain skills in `skills/` |
 | [`context/eda-findings.md`](context/eda-findings.md) | File | Dated log of EDA insights |
 | [`context/environment-setup.md`](context/environment-setup.md) | File | Local environment reproduction steps per teammate |
 | [`context/experiment-log.md`](context/experiment-log.md) | File | **APPEND-ONLY** — every approach tried, params, CV score, commit |
@@ -53,14 +46,19 @@
 | [`context/writeup-draft.md`](context/writeup-draft.md) | File | Living draft of the methodology document (internal WIP) |
 | [`context/umbrella-research.md`](context/umbrella-research.md) | File | Consolidated umbrella research findings on paradigms and optimizations |
 | [`context/architecture.md`](context/architecture.md) | File | Pipeline architecture design — repo layout, data flow, validation, model shortlist, risks |
+| [`context/reconciliation-log.md`](context/reconciliation-log.md) | File | **APPEND-ONLY** — recurring documentation reconciliation runs and open findings |
 | [`SUBMISSION/code/business_entity_resolution/src/`](SUBMISSION/code/business_entity_resolution/src/) | Folder | **All pipeline source code** — submission package location |
 | [`SUBMISSION/code/business_entity_resolution/README.md`](SUBMISSION/code/business_entity_resolution/README.md) | File | Reproduction instructions (ships in submission zip) |
-| [`SUBMISSION/code/business_entity_resolution/requirements.txt`](SUBMISSION/code/business_entity_resolution/requirements.txt) | File | Pinned dependencies (ships in submission zip) |
-| [`SUBMISSION/output/`](SUBMISSION/output/) | Folder | Submission output files (`matching_results.tsv`, `candidate_pairs.tsv`) |
+| [`SUBMISSION/code/business_entity_resolution/requirements.txt`](SUBMISSION/code/business_entity_resolution/requirements.txt) | File | Dependency list (ships in submission zip) |
+| [`SUBMISSION/output/`](SUBMISSION/output/) | Folder | Tracked leaderboard matching files and local ignored candidate audit output |
 | [`scripts/package_submission.py`](scripts/package_submission.py) | File | Creates the submission zip from repo contents |
-| [`Analysis and Research/`](Analysis%20and%20Research/) | Folder | Pre-competition analysis & winner playbook (existing) |
-| [`Analysis and Research/research_sources.xlsx`](Analysis%20and%20Research/research_sources.xlsx) | File | Excel sheet containing all cited sources during the umbrella research phase |
-| [`Data/`](Data/) | Folder | Raw dataset — **DO NOT commit to git** (in `.gitignore`) |
+| [`analysis and research/`](analysis%20and%20research/) | Folder | Pre-competition research and winner playbook |
+| [`analysis and research/amazon_ml_challenge_2026_analysis.md`](analysis%20and%20research/amazon_ml_challenge_2026_analysis.md) | File | Competition analysis; canonical dataset facts link to `context/problem-and-data.md` |
+| [`analysis and research/mit-initial-Ditto Arcnitecture research-ChatGPT-Business Entity Matching-20260925-1227.md`](analysis%20and%20research/mit-initial-Ditto%20Arcnitecture%20research-ChatGPT-Business%20Entity%20Matching-20260925-1227.md) | File | Initial matching-architecture research notes |
+| [`analysis and research/amazon_ml_challenge_winner_playbook.xlsx`](analysis%20and%20research/amazon_ml_challenge_winner_playbook.xlsx) | File | Prior challenge winner playbook |
+| [`analysis and research/research_sources.xlsx`](analysis%20and%20research/research_sources.xlsx) | File | Cited sources for the umbrella research |
+| [`data/`](data/) | Folder | Local raw dataset and official student resource — **DO NOT commit** |
+| [`SUBMISSION/output/history/`](SUBMISSION/output/history/) | Folder | Archived leaderboard matching TSVs, named by submission-log number |
 | [`amazon docs given/`](amazon%20docs%20given/) | Folder | Official problem statement & guidelines PDFs |
 | [`notebooks/`](notebooks/) | Folder | Jupyter notebooks (clear outputs before committing) |
 | [`.gitignore`](.gitignore) | File | Git ignore rules — keeps raw data & large files out of version control |
@@ -73,14 +71,14 @@
 
 | Metric | Value | Details |
 |--------|-------|---------|
-| **Best Local CV Score (F₀.₅)** | 0.9699 | Threshold sweep on validation |
-| **Best Public LB Score** | **0.697** | Full Baseline Pipeline (all countries) |
-| **Approach** | TF-IDF Word Unigrams + LightGBM | memory-stable pipeline |
+| **Best Local Validation Score (F₀.₅)** | 0.9699 | Baseline validation during training; threshold 0.940 |
+| **Best Public LB Score** | See [`context/submission-log.md`](context/submission-log.md) | Canonical submission history |
+| **Approach** | See [`context/architecture.md`](context/architecture.md) | Implemented baseline |
 | **Commit Hash** | `HEAD` | — |
 | **Produced By** | Antigravity | — |
 | **Date** | 2026-09-26 | — |
 
-> See [`context/experiment-log.md`](context/experiment-log.md) for full experiment history and [`context/submission-log.md`](context/submission-log.md) for submission history.
+> See [`context/experiment-log.md`](context/experiment-log.md) for experiment history and [`context/submission-log.md`](context/submission-log.md) for canonical submission scores.
 
 ---
 
@@ -100,15 +98,16 @@
 ### Commit & Branch Conventions
 
 - See [`context/git-workflow.md`](context/git-workflow.md) for full details
-- Branch naming: `feat/<name>-<topic>`, `fix/<name>-<topic>`, `exp/<name>-<topic>`
+- Branch naming: `feat/<name>-<topic>`, `fix/<name>-<topic>`, `exp/<name>-<topic>`, `reconcile/<YYYY-MM-DD-HHmm>`
 - Squash-merge to `main` preferred
 - **Rule: Log an experiment before you merge it.** Every approach must have a row in [`context/experiment-log.md`](context/experiment-log.md) before its branch is merged to `main`.
 
 ### Data Handling
 
-- **Never commit raw data or large model files.** The `Data/` folder is in `.gitignore`.
+- **Never commit raw data or large model files.** The lowercase `data/` folder is in `.gitignore`.
+- The misspelled `miscelleaneous/` folder contains local-only historical drafts and is ignored in Git.
 - Model weights, pickled objects, and other large artifacts must not be committed (blocked by `.gitignore`).
-- Submission output files in `SUBMISSION/output/` **are tracked** — push them so teammates can pull the latest results.
+- Leaderboard `matching_results.tsv` files in `SUBMISSION/output/` and its `history/` folder are tracked. The very large `candidate_pairs.tsv`, model threshold, and caches are local generated artifacts and are ignored.
 - Each teammate stores the dataset locally; see [`context/environment-setup.md`](context/environment-setup.md) for expected paths.
 
 ---
@@ -123,7 +122,7 @@
 
 - Added a strict "Single Source of Truth Rule" to eliminate conflicting duplicate documentation.
 - Identified that there is currently **no off-machine backup plan** for expensive intermediate pickles. Local caching is the only failsafe.
-- Flagged that the 'all singletons' baseline must be submitted ASAP to validate the local F0.5 scorer.
+- The earlier all-singletons validation reminder was superseded by the submissions recorded in [`context/submission-log.md`](context/submission-log.md).
 - Verified test S1 row count is exactly 1,732,544.
 - Verified random seeds (RANDOM_STATE=42) are properly used across splits and training.
 
@@ -169,6 +168,19 @@ Every discrete fact, decision, or number lives in exactly ONE file. Any other fi
 
 ---
 
+## Reconciliation Practice
+
+Run the `reconcile-project` skill:
+
+- After every leaderboard submission.
+- After a major pipeline or architecture revision is accepted.
+- Before final packaging or handoff.
+- When official challenge rules, dataset paths, or submission requirements change.
+
+The audit is presented before documentation edits. DOC-ONLY fixes may be committed on a dedicated reconciliation branch. CODE-ADJACENT findings require item-specific human approval before implementation. Record every run and remaining item in [`context/reconciliation-log.md`](context/reconciliation-log.md).
+
+---
+
 ## Versioning Policy
 
 > **This is a project-wide, non-optional rule for every `.md` file in this repo.**
@@ -191,6 +203,8 @@ Every markdown file ends with a `## Changelog` section (newest entry on top):
 | vX.Y | YYYY-MM-DD | Name | What changed |
 ```
 
+For Agent Skill `SKILL.md` files, valid YAML frontmatter must remain the first content in the file. Put the standard version line immediately after the closing frontmatter fence and keep the changelog at the end.
+
 ### When to Bump
 
 - **Any content edit** → bump the minor version (v1.0 → v1.1) and add a changelog row.
@@ -207,6 +221,9 @@ With 4 people and multiple AI agents editing docs during a 72-hour hackathon, we
 
 | Version | Date | By | Summary |
 |---------|------|----|---------|
+| v3.2 | 2026-09-26 | Codex | Recorded the local-only miscellaneous folder policy and removed its archived draft from the tracked-file index. |
+| v3.1 | 2026-09-26 | Codex | Clarified that provider skill folders are discovery mirrors of the canonical `skills/` directory. |
+| v3.0 | 2026-09-26 | Codex | Reconciled tracked paths, score references, output archive policy, and added recurring reconciliation practice and skill index. |
 | v2.1 | 2026-09-26 | Antigravity | Updated Current State Snapshot with 0.697 LB score and full pipeline completion |
 | v2.0 | 2026-09-26 | Antigravity | Added Single Source of Truth Rule, updated Agent Skills path, and added audit summary to Critical Notes. |
 | v1.8 | 2026-09-25 | Antigravity | Added context/challenges_faced.md to Master Index |

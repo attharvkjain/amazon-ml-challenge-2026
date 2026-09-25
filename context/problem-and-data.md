@@ -1,10 +1,10 @@
-> **Version:** v2.0 | **Last updated:** 2026-09-26 00:25 IST | **By:** Antigravity
+> **Version:** v2.2 | **Last updated:** 2026-09-26 02:30 IST | **By:** Codex
 
 # Problem Statement & Data
 
 **Standalone primer:** Amazon ML Challenge 2026 is a 72-hour hackathon (Sep 25–27, 2026) focused on Business Entity Resolution — matching noisy business records across 3 independent data sources to identify which records refer to the same real-world entity. This file covers the problem statement, dataset schema, evaluation metric, output format, constraints, and known data quirks.
 
-> For the full deep-dive analysis, see [`Analysis and Research/amazon_ml_challenge_2026_analysis.md`](../Analysis%20and%20Research/amazon_ml_challenge_2026_analysis.md).
+> For the full deep-dive analysis, see [`amazon_ml_challenge_2026_analysis.md`](../analysis%20and%20research/amazon_ml_challenge_2026_analysis.md).
 
 ---
 
@@ -34,7 +34,7 @@ Each source file has **4 columns** (tab-separated `.tsv`):
 
 | Split | Source 1 | Source 2 | Source 3 | Total |
 |-------|----------|----------|----------|-------|
-| **Train** | 2,206,821 | 5,034,617 | 5,285,604 | 12,527,042 |
+| **Train** | 2,206,821 | 5,034,616 | 5,285,603 | 12,527,040 |
 | **Test** | 1,732,544 | 4,887,273 | 5,082,316 | 11,702,133 |
 
 ### Country Distribution
@@ -85,10 +85,10 @@ Same format, column `candidate_entity_ids` — the candidate set before final ma
 ### Validation
 
 ```bash
-python ../Data/6ab10eb3b23ba_student_resource/student_resource/utils/validate_submission.py \
-    --matching SUBMISSION/SUBMISSION/output/matching_results.tsv \
-    --candidate SUBMISSION/SUBMISSION/output/candidate_pairs.tsv \
-    --test-dir ../Data/6ab10eb3b23ba_student_resource/student_resource/dataset/test
+python ../data/6ab10eb3b23ba_student_resource/student_resource/utils/validate_submission.py \
+    --matching SUBMISSION/output/matching_results.tsv \
+    --candidate SUBMISSION/output/candidate_pairs.tsv \
+    --test-dir ../data/6ab10eb3b23ba_student_resource/student_resource/dataset/test
 ```
 
 ---
@@ -131,7 +131,7 @@ python ../Data/6ab10eb3b23ba_student_resource/student_resource/utils/validate_su
 7. **Each S2/S3 record maps to exactly 1 S1 entity**: Zero duplicates confirmed. One-to-one constraint on the S2/S3 side.
 8. **Distractors**: S2 26.6%, S3 25.4% — roughly one-quarter of S2/S3 records have no match in S1.
 9. **Match count**: Median 4 per S1 entity, max 11, 99.99th percentile = 10.
-10. **Test S1 count**: **1,732,544** (verified from file). Original docs said 1,732,545 — corrected everywhere.
+10. **Test S1 count**: See the canonical record counts above and `TEST_S1_COUNT` in `SUBMISSION/code/business_entity_resolution/src/config.py`.
 
 ---
 
@@ -139,8 +139,10 @@ python ../Data/6ab10eb3b23ba_student_resource/student_resource/utils/validate_su
 
 | Version | Date | By | Summary |
 |---------|------|----|---------|
-| v1.3 | 2026-09-25 | Antigravity | Fixed test record counts to verified values: S1=1,732,544, S2=4,887,273, S3=5,082,316 (was off by 1-3) |
+| v2.2 | 2026-09-26 | Codex | Corrected validator command paths and verified row counts against all local TSVs, excluding headers. |
+| v2.1 | 2026-09-26 | Codex | Corrected case-sensitive research/data paths and verified row counts against all local TSVs, excluding headers. |
 | v2.0 | 2026-09-26 | Antigravity | Consolidated file paths to environment-setup.md to comply with Single Source of Truth Rule. |
+| v1.3 | 2026-09-25 | Antigravity | Fixed test record counts to verified values: S1=1,732,544, S2=4,887,273, S3=5,082,316 (was off by 1-3) |
 | v1.2 | 2026-09-25 | Antigravity | Added EDA-verified facts: country blocking safe, S1 100% Latin, non-Latin %, match stats, distractor rates, test S1 count discrepancy |
 | v1.1 | 2026-09-25 | Antigravity | Updated Constraints section with exact quotes from PDFs. Fixed REPO path references to SUBMISSION. |
 | v1.0 | 2026-09-25 | Member 1 | Initial skeleton with known details from problem statement |

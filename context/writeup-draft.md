@@ -1,4 +1,4 @@
-> **Version:** v1.1 | **Last updated:** 2026-09-26 01:05 IST | **By:** Antigravity
+> **Version:** v1.2 | **Last updated:** 2026-09-26 02:30 IST | **By:** Codex
 
 # Approach Document — Living Draft
 
@@ -10,7 +10,7 @@
 
 ## 1. Executive Summary
 
-Our approach models Business Entity Resolution as a two-stage pipeline: a highly optimized sparse TF-IDF blocker for scalable candidate generation, followed by a LightGBM classifier with string edit distance features to enforce precision. By completely partitioning by country and using word unigrams for extreme matrix sparsity, we were able to process 94 million candidate pairs across 14 threads in under 30 minutes, achieving a robust F₀.₅ score of 0.697 on the public leaderboard.
+Our approach models Business Entity Resolution as a two-stage pipeline: country-partitioned word-unigram TF-IDF blocking followed by a LightGBM classifier. The public result is recorded in the canonical [`submission log`](submission-log.md).
 
 ---
 
@@ -30,7 +30,7 @@ The dataset contains significant noise, including non-Latin characters for India
 ## 3. Candidate Generation (Blocking)
 
 - **Blocking keys used:** TF-IDF Word Unigrams (Name + Address concatenated)
-- **Candidate pairs generated:** 94,103,432 pairs for India, 76,276,756 pairs for US, and 2.5 million pairs for France.
+- **Candidate volume:** The logged full inference total is recorded in the [`submission log`](submission-log.md); unverified per-country figures from an earlier draft have been removed.
 - **How you ensured true matches were not lost:** Selected the top-K (K=20) nearest neighbors in the TF-IDF space to guarantee high recall, resulting in a validation blocking recall of 99.43%.
 
 ---
@@ -43,14 +43,14 @@ The dataset contains significant noise, including non-Latin characters for India
 - Other: Source indicator (S2 vs S3)
 
 **Model type:** LightGBM Binary Classifier (`scale_pos_weight` optimized for F₀.₅ precision bias)
-**Threshold selection method:** Threshold was swept across the local validation set to strictly maximize macro F₀.₅, resulting in an optimal cutoff of 0.940.
+**Threshold selection method:** The cutoff is selected by sweeping the held-out local validation set to maximize macro F0.5. See [`project.md`](../project.md#current-state-snapshot) for the canonical baseline score and cutoff.
 
 ---
 
 ## 5. Results & Error Analysis
 
-- **F₀.₅ Score (macro):** 0.9699
-- **Public LB Score:** 0.697
+- **Local baseline validation:** See [`project.md`](../project.md#current-state-snapshot) for the canonical score and cutoff.
+- **Public leaderboard result:** See [`context/submission-log.md`](submission-log.md) for the canonical submission history.
 - **Common false positives (wrong merges):** Franchises or branch locations with identical names but slightly varying localized addresses.
 - **Common false negatives (missed matches):** Severe transliteration discrepancies between Indic scripts and Latin scripts that string edit distances struggle to reconcile.
 
@@ -70,9 +70,7 @@ The full code ships in the submission zip under `code/business_entity_resolution
 
 ### B. Additional Results
 
-Per-country F₀.₅ validation:
-- India: 0.9578
-- US: 0.9780
+Per-country validation scores are shown in [`notebooks/diagnostics/per_country_f05.png`](../notebooks/diagnostics/per_country_f05.png).
 
 ---
 
@@ -80,5 +78,6 @@ Per-country F₀.₅ validation:
 
 | Version | Date | By | Summary |
 |---------|------|----|---------|
+| v1.2 | 2026-09-26 | Codex | Clarified that 0.9699 is the baseline training validation result and linked canonical score, threshold, public submission, and per-country diagnostics. |
 | v1.1 | 2026-09-26 | Antigravity | Updated draft with Baseline TF-IDF + LightGBM details and 0.697 score |
 | v1.0 | 2026-09-25 | Member 1 | Initial skeleton from Documentation_template.md |

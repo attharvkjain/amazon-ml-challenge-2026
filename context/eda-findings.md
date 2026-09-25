@@ -1,4 +1,4 @@
-> **Version:** v1.1 | **Last updated:** 2026-09-25 16:05 IST | **By:** Antigravity
+> **Version:** v1.2 | **Last updated:** 2026-09-26 02:07 IST | **By:** Codex
 
 # EDA Findings
 
@@ -83,7 +83,7 @@ Since each S2/S3 record maps to at most 1 S1 entity, and the max matches per S1 
 
 #### 6. Test S1 Count Discrepancy
 
-**Test S1 count from actual file: 1,732,544.** Some docs reference 1,732,545 — off by 1. Need to verify and update assertions.
+**Test S1 count from actual file: 1,732,544.** The earlier note about verifying this count is resolved. Reconciliation counted data rows (excluding headers) in all seven TSVs; see [`problem-and-data.md`](problem-and-data.md) for canonical source counts.
 
 *(No entries yet — add the first EDA finding above this line.)*
 
@@ -93,5 +93,6 @@ Since each S2/S3 record maps to at most 1 S1 entity, and the max matches per S1 
 
 | Version | Date | By | Summary |
 |---------|------|----|---------|
+| v1.2 | 2026-09-26 | Codex | Closed the test-row verification note and linked canonical source counts. |
 | v1.1 | 2026-09-25 | Antigravity | First EDA: country blocking verified, non-Latin script analysis, match distributions, distractor rates, blocking K calibration |
 | v1.0 | 2026-09-25 | Member 1 | Initial skeleton created |

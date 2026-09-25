@@ -1,3 +1,5 @@
+> **Version:** v1.0 | **Last updated:** 2026-09-26 02:07 IST | **By:** Codex
+
 # Amazon ML Challenge 2026 — Comprehensive Problem Analysis
 
 ## 1. Domain: Business Entity Resolution
@@ -57,11 +59,7 @@ Each source file has **4 columns** (tab-separated):
 
 ### 3.1 Record Counts
 
-| Split | Source 1 | Source 2 | Source 3 | Total |
-|:---|---:|---:|---:|---:|
-| **Train** | 2,206,821 | 5,034,617 | 5,285,604 | **12,527,042** |
-| **Test** | 1,732,545 | 4,887,274 | 5,082,317 | **11,702,136** |
-| **Total** | 3,939,366 | 9,921,891 | 10,367,921 | **24,229,178** |
+See [`context/problem-and-data.md`](../context/problem-and-data.md) for the canonical verified train and test counts.
 
 > [!WARNING]
 > **Brute-force is impossible.** The test set alone requires 1.7M × 10M = **17.3 trillion** pairwise comparisons without blocking. An efficient blocking/candidate generation strategy is **mandatory**.
@@ -193,7 +191,7 @@ quadrantChart
 | `candidate_pairs.tsv` | Blocking candidates (superset of matches) | ❌ No — audit only |
 
 ### Critical format rules:
-- **Every** S1 test entity must have exactly one row (1,732,545 rows)
+- **Every** S1 test entity must have exactly one row; see [`context/problem-and-data.md`](../context/problem-and-data.md) for the canonical count and output contract.
 - Empty `matched_entity_ids` for singletons (not "none" or "null" — literally empty)
 - Only S2-/S3- IDs that exist in the test set
 - No duplicate IDs within a list; no duplicate S1 rows
@@ -421,10 +419,10 @@ flowchart TD
 | 2023 | Product-length regression | `max(0, 100×(1−MAPE))` | Not archived |
 | 2024 | Image entity extraction | F1 Score | **0.865** |
 | 2025 | Smart Product Pricing | SMAPE | **≈39.7** |
-| **2026** | **Business Entity Resolution** | **F₀.₅** | **TBD** |
+| **2026** | **Business Entity Resolution** | **F₀.₅** | Current team public score is recorded in [`context/submission-log.md`](../context/submission-log.md); final ranking is pending. |
 
 > [!NOTE]
-> The 2026 challenge is significantly harder than previous years due to: (a) massive scale (24M records), (b) multilingual/multi-script data, (c) zero-shot country domain shift, and (d) extreme noise diversity. A winning F₀.₅ score in the range of **0.80-0.90** would be a strong result.
+> The 2026 challenge is significantly harder than previous years due to its scale, multilingual/multi-script data, zero-shot country domain shift, and noise diversity. The initial 0.80–0.90 target was an early research estimate; see the submission log for the current public result.
 
 ---
 
@@ -451,7 +449,7 @@ flowchart TD
 - [ ] `output/candidate_pairs.tsv` — blocking candidates (superset of matches)
 - [ ] `code/business_entity_resolution/src/` — all source code
 - [ ] `code/business_entity_resolution/README.md` — reproduction instructions
-- [ ] `code/business_entity_resolution/requirements.txt` — pinned dependencies
+- [ ] `code/business_entity_resolution/requirements.txt` — dependency list
 - [ ] `Documentation_template.md` — filled methodology document
 - [ ] Run `validate_submission.py` → PASS before every submission
 - [ ] Model ≤ 8B params, MIT/Apache 2.0 license
@@ -466,3 +464,9 @@ flowchart TD
 3. **Precision-first threshold tuning** — optimizing for F₀.₅, not F1; aggressively pruning low-confidence matches
 4. **Singleton detection** — treating "no match" as a first-class prediction worth 1.0 points
 5. **Post-processing deduplication** — exploiting the 1-to-1 constraint from S2/S3 side to resolve conflicts
+
+## Changelog
+
+| Version | Date | By | Summary |
+|---------|------|----|---------|
+| v1.0 | 2026-09-26 | Codex | Linked canonical dataset/output facts, updated the current-result reference, and removed stale counts and TBD. |

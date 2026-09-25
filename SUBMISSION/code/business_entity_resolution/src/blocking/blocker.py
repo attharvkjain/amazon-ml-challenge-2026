@@ -1,5 +1,5 @@
 """
-Blocking — Country-first hard partition + TF-IDF character n-gram candidate generation.
+Blocking - country-first hard partition plus word-unigram TF-IDF candidate generation.
 (Multithreading optimized)
 """
 from __future__ import annotations

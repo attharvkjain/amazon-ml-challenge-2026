@@ -1,4 +1,4 @@
-> **Version:** v3.0 | **Last updated:** 2026-09-26 00:25 IST | **By:** Antigravity
+> **Version:** v4.1 | **Last updated:** 2026-09-26 02:58 IST | **By:** Antigravity
 
 # Architecture — Business Entity Resolution Pipeline
 
@@ -53,32 +53,34 @@ AmazonMLChallenge_2026/                     # ← workspace root
 │   │   │   │
 │   │   │   ├── models/
 │   │   │   │   ├── __init__.py
-│   │   │   │   └── matcher.py             # Train / predict logic (XGBoost/LightGBM)
+│   │   │   │   └── matcher.py             # Train / predict logic (LightGBM)
 │   │   │   │
 │   │   │   ├── postprocessing/
 │   │   │   │   ├── __init__.py
-│   │   │   │   └── threshold.py           # Threshold tuning, veto rules, output formatting
+│   │   │   │   └── threshold.py           # Threshold tuning, one-to-one constraint, output formatting
 │   │   │   │
 │   │   │   └── evaluation/
 │   │   │       ├── __init__.py
 │   │   │       └── metrics.py             # F₀.₅ scorer + CV harness
 │   │   │
 │   │   ├── README.md                      # Reproduction guide (ships in zip)
-│   │   └── requirements.txt               # Pinned deps (ships in zip)
+│   │   └── requirements.txt               # Dependency list (ships in zip)
 │   │
 │   ├── output/
-│   │   ├── matching_results.tsv           # Leaderboard submission (1,732,544 rows)
-│   │   └── candidate_pairs.tsv            # Blocking audit
+│   │   ├── matching_results.tsv           # Current leaderboard submission
+│   │   ├── history/                       # Numbered historical matching TSVs
+│   │   └── candidate_pairs.tsv            # Local blocking audit (not tracked)
 │   │
 │   └── Documentation_template.md          # Official methodology write-up
 │
-├── .agents/skills/                         # 🤖 AGENT SKILLS (provider-agnostic)
+├── skills/                                 # 🤖 Canonical tracked, provider-agnostic Agent Skills
 │   ├── log-experiment/SKILL.md
 │   ├── validate-submission/SKILL.md
 │   ├── eda-report/SKILL.md
 │   ├── new-experiment/SKILL.md
 │   ├── notebook-to-script/SKILL.md
-│   └── sync-writeup/SKILL.md
+│   ├── sync-writeup/SKILL.md
+│   └── reconcile-project/SKILL.md
 │
 ├── context/                                # 📖 BUILD-TIME DOCS (not submitted)
 │   ├── architecture.md                    # ← THIS FILE
@@ -97,10 +99,9 @@ AmazonMLChallenge_2026/                     # ← workspace root
 │
 ├── scripts/                                # 🔧 Build utilities (not submitted)
 │   ├── package_submission.py              # Zip builder
-│   └── run_experiment.py                  # (proposed) Experiment runner with auto-logging
 │
-├── Analysis and Research/                  # 📚 Pre-comp research (not submitted)
-├── Data/                                   # 📦 Raw data — .gitignore'd, READ-ONLY
+├── analysis and research/                  # 📚 Pre-comp research (not submitted)
+├── data/                                    # 📦 Raw data — .gitignore'd, READ-ONLY
 ├── amazon docs given/                      # Official PDFs
 ├── project.md                              # Master index
 └── agents.md                               # AI agent operating manual
@@ -113,10 +114,10 @@ AmazonMLChallenge_2026/                     # ← workspace root
 | `preprocessing/load.py` | Read TSVs with `sep='\t'`, validate schema, create train/val split | Raw TSVs → DataFrames + validation split |
 | `preprocessing/clean.py` | Lowercase, strip punctuation only, handle nulls. **Preserve legal suffixes and Unicode.** | DataFrame → DataFrame with `clean_name`, `clean_address` |
 | `preprocessing/transliterate.py` | Multi-script → Latin conversion via script-specific ensemble | DataFrame → DataFrame with transliterated fields |
-| `blocking/blocker.py` | Country-first partitioning → TF-IDF/embedding candidate generation per country | DataFrames → `candidate_pairs.tsv` + pair DataFrame |
-| `features/similarity.py` | Compute pairwise features: string similarities, token overlaps, phonetic, embedding cosine | Pair DataFrame → Feature matrix |
+| `blocking/blocker.py` | Country-first partitioning plus TF-IDF candidate generation per country | DataFrames -> `candidate_pairs.tsv` + pair DataFrame |
+| `features/similarity.py` | Compute string similarities, token overlaps, length ratios, numeric address overlap, and source indicator | Pair DataFrame -> 14-column feature matrix |
 | `models/matcher.py` | Train classifier, predict match probabilities | Features + labels → Model + probabilities |
-| `postprocessing/threshold.py` | Tune threshold on F₀.₅, apply veto rules, enforce one-to-one S2/S3 constraint, format output | Probabilities → `matching_results.tsv` |
+| `postprocessing/threshold.py` | Tune threshold, enforce one-to-one S2/S3 assignment, and format output | Probabilities -> `matching_results.tsv` |
 | `evaluation/metrics.py` | Compute F₀.₅ (per-entity + macro-averaged), CV harness, diagnostic plots | Predictions + ground truth → Score + charts |
 
 ### Notebooks vs Scripts
@@ -185,35 +186,13 @@ The F₀.₅ metric is precision-heavy. Stripping legal suffixes like "Private L
    - NOT `[^a-z0-9\s]` which destroys everything non-ASCII
 5. **Whitespace normalization:** Collapse multiple spaces
 
-**⚠️ Current `clean.py` scaffold is broken:** Uses `[^a-z0-9\s]` which strips all Unicode. Must be fixed to `[^\w\s]` with `re.UNICODE`.
+**Current implementation:** See [`clean.py`](../SUBMISSION/code/business_entity_resolution/src/preprocessing/clean.py) for the Unicode-preserving punctuation cleanup and suffix normalization.
 
 ### Stage 3: Multi-Script Transliteration Ensemble (`transliterate.py`)
 
 **Key finding from EDA:** S1 is 100% Latin script (0 non-Latin characters). S2 has ~17% non-Latin records, S3 has ~13%. Transliteration is a one-way operation: convert S2/S3 non-Latin → Latin to match S1.
 
-**Ensemble approach — use the best tool for each script family:**
-
-| Script Family | Coverage | Recommended Tool | License | Notes |
-|---------------|----------|-----------------|---------|-------|
-| **Devanagari** (Hindi, Marathi, Sanskrit) | Largest Indic share | `indic-transliteration` (ITRANS) or IndicXlit | MIT / MIT | Most Indian business names |
-| **Bengali/Bangla** | Significant in India | `indic-transliteration` | MIT | |
-| **Tamil** | South India | `indic-transliteration` | MIT | |
-| **Telugu** | South India | `indic-transliteration` | MIT | |
-| **Kannada** | South India | `indic-transliteration` | MIT | |
-| **Malayalam** | South India | `indic-transliteration` | MIT | |
-| **Gujarati** | West India | `indic-transliteration` | MIT | |
-| **Gurmukhi** (Punjabi) | North India | `indic-transliteration` | MIT | |
-| **Odia** | East India | `indic-transliteration` | MIT | |
-| **French accented Latin** | ~15% of test | `unidecode` or `unicodedata.normalize('NFD')` + strip combining | PSF / stdlib | é→e, ç→c, etc. |
-
-**Processing logic:**
-1. **Detect script** per character using Unicode block ranges
-2. **Route** to the appropriate transliterator based on detected script
-3. **Transliterate** to Latin/ASCII
-4. **For mixed-script text** (e.g., "ABC प्राइवेट लिमिटेड"): transliterate non-Latin portions, keep Latin portions
-5. **French:** Normalize accented characters to ASCII equivalents (optional — can also leave as-is if similarity functions handle Unicode)
-
-**Important:** Since S1 is always Latin, transliteration happens on S2/S3 only. S1 is passed through unchanged.
+**Implemented baseline:** `transliterate.py` routes supported Indic scripts to `indic-transliteration` ITRANS and folds French combining accents with the standard library. S1 passes through unchanged. The optional multilingual model approaches below are not part of the current baseline.
 
 ### Stage 4: Blocking / Candidate Generation (`blocker.py`)
 
@@ -242,11 +221,11 @@ flowchart TD
     H --> I
 ```
 
-#### Within-country blocking (TF-IDF character n-grams):
+#### Within-country blocking (implemented TF-IDF word unigrams):
 
 1. Build TF-IDF vectors on `clean_name + " " + clean_address` for S1 records in this country
 2. For each S2/S3 record in the same country, find top-K nearest S1 neighbors via sparse cosine similarity
-3. Config: `TFIDF_NGRAM_RANGE = (3, 3)`, `BLOCKING_TOP_K = 20`
+3. Config: word analyzer, `TFIDF_NGRAM_RANGE = (1, 1)`, `TFIDF_MAX_FEATURES = 100_000`, `max_df = 0.01`, and `BLOCKING_TOP_K = 20` (see `src/config.py` and `src/blocking/blocker.py`).
 
 #### BLOCKING_TOP_K calibration:
 
@@ -269,29 +248,13 @@ Based on EDA analysis:
 
 **Input:** Candidate pairs from blocking.
 
-**Proposed features:**
+**Implemented features** (see `src/features/similarity.py`):
 
-| Feature | Library | Description |
-|---------|---------|-------------|
-| Jaro-Winkler (name) | `rapidfuzz` | Character-level similarity, good for typos |
-| Levenshtein ratio (name) | `rapidfuzz` | Edit distance normalized |
-| Token sort ratio (name) | `rapidfuzz` | Handles word reordering |
-| Token set ratio (name) | `rapidfuzz` | Handles extra/missing tokens |
-| Jaro-Winkler (address) | `rapidfuzz` | Address character similarity |
-| Levenshtein ratio (address) | `rapidfuzz` | Address edit distance |
-| Token overlap (name) | custom | Jaccard on word tokens |
-| Token overlap (address) | custom | Jaccard on word tokens |
-| Name length ratio | custom | `len(shorter) / len(longer)` |
-| Address length ratio | custom | `len(shorter) / len(longer)` |
-| Shared numeric tokens | custom | Count of matching numbers (address numbers, PINs) |
-| Source indicator | custom | Whether candidate is S2 or S3 (different noise profiles) |
-| Country (encoded) | custom | Country of the pair (may affect optimal thresholds) |
+- Name and address Jaro-Winkler, Levenshtein ratio, token-sort ratio, and token-set ratio.
+- Name and address token-overlap Jaccard and length ratios.
+- Shared numeric address tokens and an S2/S3 source indicator.
 
-**Optional (if time allows):**
-- Phonetic similarity (Soundex/Metaphone)
-- Embedding cosine similarity (from blocking embeddings if FAISS path is used)
-- TF-IDF cosine similarity (reuse blocking vectors)
-- Prefix/suffix match features
+Embedding, phonetic, country-encoded, and prefix/suffix features are not in the current feature matrix.
 
 ### Stage 6: Classification (`matcher.py`)
 
@@ -299,17 +262,7 @@ See [Model Shortlist](#4-model-shortlist).
 
 ### Stage 7: Post-processing (`threshold.py`)
 
-**Operations:**
-1. **Threshold optimization:** Sweep probability threshold on held-out validation set to maximize F₀.₅ — NOT fixed at 0.5
-2. **Veto rules:**
-   - If country differs → reject (should already be blocked, but safety check)
-   - If all numeric tokens in address differ entirely → reject (extra precision)
-3. **One-to-one constraint enforcement (S2/S3 side):** Each S2/S3 record maps to at most one S1 entity. If a S2/S3 record is predicted to match multiple S1 entities, keep only the highest-confidence pair.
-4. **Output formatting:**
-   - `matching_results.tsv`: `source1_entity_id\tmatched_entity_ids` (comma-separated or empty)
-   - Exactly 1,732,544 rows (one per S1 test entity)
-   - `candidate_pairs.tsv`: Same format with `candidate_entity_ids` column, all candidates before threshold
-5. **Validation:** Run `validate_submission.py` as final pipeline step (automated)
+**Implemented behavior:** Sweep thresholds on validation F0.5, keep the highest-confidence candidate when an S2/S3 ID is assigned to multiple S1 entities, and write matching and candidate TSV outputs. Country partitioning happens during blocking. The output row count is defined by the test S1 input; see `context/problem-and-data.md`. Train mode runs the submission validator after writing outputs.
 
 ---
 
@@ -354,7 +307,7 @@ Since the test data has **no ground truth**, all evaluation must happen on train
 
 ### Fast Dev Loop
 
-- `SAMPLE_FRAC = 0.1` in `config.py` → 10% sample for rapid iteration
+Training defaults to the full dataset. Lower `SAMPLE_FRAC` in `src/config.py` for sampled development runs; the active default is recorded in [`project.md`](../project.md).
 - Full run only for CV scoring and submission generation
 
 ---
@@ -363,13 +316,12 @@ Since the test data has **no ground truth**, all evaluation must happen on train
 
 Given: F₀.₅ metric (precision-heavy), ~24M records, 72-hour budget, ≤8B parameters, no external data.
 
-### Approach 1: Country-Partitioned TF-IDF Blocking + LightGBM ⭐ (Baseline — build first)
+### Implemented baseline: Country-Partitioned Word-Unigram TF-IDF + LightGBM
 
 | Aspect | Detail |
 |--------|--------|
-| **What** | Country partition → TF-IDF char n-gram blocking → pairwise string similarity features → LightGBM classifier |
+| **What** | Country partition + word-unigram TF-IDF + 14 pairwise features + LightGBM classifier |
 | **Why** | Fastest to iterate, no GPU needed, handles tabular features natively, already in requirements |
-| **Expected time** | ~6-10 hours to build end-to-end with CV |
 | **F₀.₅ optimization** | Tune decision threshold on validation set to maximize F₀.₅; can use `scale_pos_weight` to bias toward precision |
 
 ### Approach 2: + Multilingual Embedding Features (Enhancement)
@@ -399,7 +351,7 @@ Given: F₀.₅ metric (precision-heavy), ~24M records, 72-hour budget, ≤8B pa
 | **Expected time** | ~4-6 hours to configure |
 | **Risk** | Less flexible; team needs to learn Splink API |
 
-### Recommended Execution Order
+### Optional future approaches
 
 ```mermaid
 flowchart LR
@@ -409,7 +361,7 @@ flowchart LR
 ```
 
 > [!IMPORTANT]
-> **Build Approach 1 first.** It establishes the full end-to-end pipeline. All subsequent approaches are incremental — they slot into the same pipeline, replacing or augmenting specific stages.
+> **Approach 1 is the implemented baseline.** The remaining approaches below are optional extensions, not current pipeline components.
 
 ---
 
@@ -417,7 +369,7 @@ flowchart LR
 
 ### Agent Skills System
 
-The project uses a provider-agnostic skills system in `.agents/skills/`. These are auto-detected by AI agents and triggered contextually:
+The tracked, provider-agnostic skills live in `skills/`; provider directories contain copies for some existing skills:
 
 | Skill | Trigger | What It Does |
 |-------|---------|--------------|
@@ -427,60 +379,9 @@ The project uses a provider-agnostic skills system in `.agents/skills/`. These a
 | `new-experiment` | Starting new approach | Creates `exp/` branch, scaffolds from current best config |
 | `notebook-to-script` | Modularizing notebook code | Extracts logic to `.py` modules under `SUBMISSION/code/.../src/` |
 | `sync-writeup` | Updating methodology doc | Pulls best score + architecture into `context/writeup-draft.md` |
+| `reconcile-project` | After milestone / before packaging | Audits docs against the repository and logs findings |
 
-### Programmatic Experiment Logger
-
-In addition to the skill, a Python helper function in `evaluation/metrics.py` allows automated logging from training scripts:
-
-```python
-def log_experiment(
-    approach: str,
-    key_params: str,
-    cv_score: float,
-    who: str,
-    commit: str,
-    notes: str = "",
-) -> None:
-    """Append a row to context/experiment-log.md.
-    
-    Call this at the end of every training run, after CV scoring.
-    Implements the same logic as the log-experiment skill.
-    """
-    import datetime
-    from pathlib import Path
-    
-    log_path = Path(__file__).resolve().parents[5] / "context" / "experiment-log.md"
-    date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-    
-    content = log_path.read_text(encoding="utf-8")
-    # Find last experiment number
-    last_num = 0
-    for line in content.split("\n"):
-        parts = line.split("|")
-        if len(parts) > 1 and parts[1].strip().isdigit():
-            last_num = max(last_num, int(parts[1].strip()))
-    
-    next_num = last_num + 1
-    new_row = f"| {next_num} | {date} | {approach} | {key_params} | {cv_score:.4f} | {who} | {commit} | {notes} |"
-    
-    # Insert before the marker line
-    marker = "*(Add the first experiment"
-    if marker in content:
-        content = content.replace(marker, new_row + "\n" + marker)
-    
-    log_path.write_text(content, encoding="utf-8")
-    print(f"[LOG] Experiment #{next_num} logged: {approach} → F₀.₅ = {cv_score:.4f}")
-```
-
-### Proposed `scripts/run_experiment.py`
-
-A wrapper that:
-1. Accepts CLI args for config overrides
-2. Runs the pipeline (train + CV evaluate)
-3. Auto-captures git commit hash
-4. Calls `log_experiment()` with results
-5. Runs `validate_submission.py` on output
-6. Generates diagnostic plots
+Experiment logging is append-only and follows [`skills/log-experiment/SKILL.md`](../skills/log-experiment/SKILL.md). The experiment log is the canonical record of model runs.
 
 ---
 
@@ -519,50 +420,22 @@ Every training run should produce diagnostic outputs to guide architecture impro
 
 ---
 
-## 7. Risk List
+## 7. Current Risks and Open Items
 
-### 🔴 Critical (likely to break things or eat >4 hours)
+- **Full-scale resource use:** Training now defaults to all available training data. Lower `SAMPLE_FRAC` in `src/config.py` for development attempts.
+- **Zero-shot France:** France has no training labels; current baseline behavior should be read as unvalidated for that country.
+│   └── reconciliation-log.md
+- **Output validation:** Run the official validator before packaging or submission.
 
-| # | Risk | Impact | Mitigation |
-|---|------|--------|------------|
-| 1 | **Blocking recall too low** — if TF-IDF blocking misses true matches, no downstream model can recover them | Ceiling on F₀.₅ score | Measure blocking recall on train set BEFORE building classifier. Target ≥98% pair recall. Increase K or add multi-strategy blocking. |
-| 2 | **Cross-script matching failure** — S2/S3 have ~13-17% non-Latin, S1 is 100% Latin. String similarity returns 0.0 between scripts. | Lose ~15% of potential matches | Transliteration pipeline is critical path. Must handle all 8+ Indic scripts. Run diagnostic on cross-script pairs specifically. |
-| 3 | **Scale / memory issues** — 24M records, pairwise features on millions of candidate pairs | Pipeline crashes or takes >12 hours | Country partitioning helps (~3x reduction). Use sparse matrices. Profile memory early. |
-| 4 | **France zero-shot collapse** — ~15% of test S1 entities are French with zero French training data | F₀.₅ tanks on French entities | Use multilingual embeddings (LaBSE/E5). French is Latin script, so string similarity should work. Conservative matching for French (higher threshold). |
-
-### 🟡 Moderate (likely to waste 1-4 hours)
-
-| # | Risk | Impact | Mitigation |
-|---|------|--------|------------|
-| 5 | **`clean.py` Unicode destruction** — current scaffold regex `[^a-z0-9\s]` strips all non-ASCII | Transliteration becomes useless; French accents lost | **Fix immediately** to `[^\w\s]` with `re.UNICODE`. This is a v2.0 action item. |
-| 6 | **`package_submission.py` broken path** — still references `REPO_DIR` instead of `SUBMISSION` | Can't package submission | Fix the path constant to `SUBMISSION`. |
-| 7 | **Submission format errors** — wrong delimiter, wrong row count, duplicate IDs | Rejected submission | Always run `validate_submission.py` as final pipeline step. |
-| 8 | **Environment mismatch across 4 machines** | "Works on my machine" failures | Fill `environment-setup.md` TODAY. Pin all deps. |
-| 9 | **Threshold overfitting** — tuning too aggressively on validation set | Score drops on private LB | Use separate validation set for threshold (not CV folds). Keep threshold conservative — F₀.₅ rewards precision. |
-
-### 🟢 Low (annoying but recoverable)
-
-| # | Risk | Impact | Mitigation |
-|---|------|--------|------------|
-| 10 | **Experiment log not updated** | Redundant work | Auto-logging via `log-experiment` skill + `log_experiment()` helper. |
-| 11 | **Git conflicts on notebooks** | Lost work | Keep exploration thin; move logic to `.py` via `notebook-to-script` skill. |
-| 12 | **Test S1 count discrepancy** — EDA shows 1,732,544 but docs say 1,732,545 | Validation failure | Verify exact count and update docs/assertions accordingly. |
+The former scaffold/path/count risks were resolved or superseded. The reconciliation log records which outdated items were removed and why.
 
 ---
 
 ## 8. Additional Considerations
 
-### 8.1 Submission Timing Strategy
+### 8.1 Submission History
 
-1. **First submission:** "All singletons" baseline (empty `matched_entity_ids` for all S1 entities) — validates format, establishes floor
-2. **Second submission:** Approach 1 baseline (TF-IDF + LightGBM)
-3. **Subsequent:** Incremental improvements from Approaches 2-4
-4. **Final 6 hours:** Best model selection + conservative threshold + full retrain
-
-### 8.2 "All Singletons" Baseline Score
-
-- ~5.6% of train S1 entities are singletons → all-singletons prediction scores ~0.056
-- This is the absolute floor. Any real model should vastly exceed it.
+│   │   ├── history/                       # Numbered historical matching TSVs
 
 ### 8.4 Data Leakage Checklist
 
@@ -607,9 +480,26 @@ Country partitioning reduces memory by ~60% compared to full dataset operations.
 
 ---
 
+## 9. V2 Architecture (GPU Semantic Blocking)
+
+**Context:** The V1 Baseline (TF-IDF + LightGBM) achieved a 0.697 LB score but exposed severe time complexity limits when dealing with 10M+ strings. The top LB score is 0.9884. To close this gap before the 12:00 PM Core Build deadline (Sep 26), we are pivoting to a GPU-accelerated Semantic Blocking approach.
+
+### Key Tenets
+1. **Semantic Blocking is the Secret Sauce:** We must prioritize blocking recall (F0.5 still requires precision, but ML will handle that later). We need an optimal, GPU-accelerated blocking algorithm with better time complexity than sparse $O(N^2)$ dot products.
+2. **Hardware Constraint Awareness:** The architecture MUST run within the local hardware constraints and competition time limits. No fantasy architectures.
+3. **Pretrained Models:** Stand on the shoulders of giants. Use highly optimized, pretrained dense retrievers (e.g., `sentence-transformers`, `Faiss` GPU indexing) instead of training from scratch.
+
+### Proposed Blocking Algorithms for V2
+- **Dense Retrieval with Faiss (GPU):** Embed all entity names/addresses using a fast, lightweight multilingual embedding model (e.g., `paraphrase-multilingual-MiniLM-L12-v2`). Index S1 using `faiss.IndexFlatIP` (or `IndexIVFFlat` for speed) on the GPU, and query S2/S3. This brings time complexity down to $O(N \log N)$ and completes in seconds on a GPU.
+- **Bi-Encoders:** For semantic representation that captures transliteration discrepancies far better than character n-grams.
+
+---
+
 ## Changelog
 | Version | Date | By | Summary |
 |---------|------|----|---------|
+| v4.1 | 2026-09-26 | Antigravity | Added V2 Architecture (GPU Semantic Blocking) plan. |
+| v4.0 | 2026-09-26 | Codex | Reconciled the architecture with implemented pipeline behavior, tracked paths, active risks, and current submission history. |
 | v3.0 | 2026-09-26 | Antigravity | Replaced data facts with canonical link and removed team split to align with Single Source of Truth Rule. |
 | v2.3 | 2026-09-25 | Antigravity | Updated Performance Principle to include pipeline caching/checkpointing |
 | v2.2 | 2026-09-25 | Antigravity | Updated Performance Principle to include proactive bottleneck resolution |
