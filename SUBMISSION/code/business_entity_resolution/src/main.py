@@ -16,6 +16,10 @@ import time
 import gc
 import numpy as np
 import pandas as pd
+import joblib
+
+CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'cache')
+os.makedirs(CACHE_DIR, exist_ok=True)
 
 # Ensure src/ is on the path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -66,47 +70,72 @@ def run_train():
     """
     total_start = time.time()
 
-    # ── 1. Load data ──────────────────────────────────────────────────────
+    # ── 1. Load & Preprocess Data (Cached) ───────────────────────────────
     print("\n" + "="*60)
-    print("STAGE 1: Loading data")
+    print("STAGE 1 & 2: Loading & Preprocessing")
     print("="*60)
-    data = load_train_data(sample_frac=SAMPLE_FRAC)
-
-    # ── 2. Preprocess ─────────────────────────────────────────────────────
-    print("\n" + "="*60)
-    print("STAGE 2: Preprocessing (clean + transliterate)")
-    print("="*60)
-    data = _preprocess_all(data, ['train', 'val'])
+    
+    train_data_path = os.path.join(CACHE_DIR, 'train_data.pkl')
+    if os.path.exists(train_data_path):
+        print("[cache] Loading preprocessed train/val data from cache...")
+        data = joblib.load(train_data_path)
+    else:
+        data = load_train_data(sample_frac=SAMPLE_FRAC)
+        data = _preprocess_all(data, ['train', 'val'])
+        print("[cache] Saving preprocessed train/val data to cache...")
+        joblib.dump(data, train_data_path)
 
     # ── 3. Blocking ───────────────────────────────────────────────────────
     print("\n" + "="*60)
     print("STAGE 3: Blocking (TF-IDF candidate generation)")
     print("="*60)
 
-    print("\n[blocking] Generating TRAIN candidates ...")
-    train_pairs = generate_candidates(
-        data['train_s1'], data['train_s2'], data['train_s3']
-    )
-    train_blocking_recall = compute_blocking_recall(train_pairs, data['train_gt'])
+    train_pairs_path = os.path.join(CACHE_DIR, 'train_pairs.pkl')
+    val_pairs_path = os.path.join(CACHE_DIR, 'val_pairs.pkl')
 
-    print("\n[blocking] Generating VAL candidates ...")
-    val_pairs = generate_candidates(
-        data['val_s1'], data['val_s2'], data['val_s3']
-    )
-    val_blocking_recall = compute_blocking_recall(val_pairs, data['val_gt'])
+    if os.path.exists(train_pairs_path):
+        print("\n[cache] Loading TRAIN candidates from cache...")
+        train_pairs, train_blocking_recall = joblib.load(train_pairs_path)
+    else:
+        print("\n[blocking] Generating TRAIN candidates ...")
+        train_pairs = generate_candidates(data['train_s1'], data['train_s2'], data['train_s3'])
+        train_blocking_recall = compute_blocking_recall(train_pairs, data['train_gt'])
+        joblib.dump((train_pairs, train_blocking_recall), train_pairs_path)
+
+    if os.path.exists(val_pairs_path):
+        print("\n[cache] Loading VAL candidates from cache...")
+        val_pairs, val_blocking_recall = joblib.load(val_pairs_path)
+    else:
+        print("\n[blocking] Generating VAL candidates ...")
+        val_pairs = generate_candidates(data['val_s1'], data['val_s2'], data['val_s3'])
+        val_blocking_recall = compute_blocking_recall(val_pairs, data['val_gt'])
+        joblib.dump((val_pairs, val_blocking_recall), val_pairs_path)
 
     # ── 4. Feature extraction ─────────────────────────────────────────────
     print("\n" + "="*60)
-    print("STAGE 4: Feature extraction")
+    print("STAGE 4: Feature extraction (Cached)")
     print("="*60)
 
-    print("\n[features] Extracting TRAIN features ...")
-    X_train = extract_features(train_pairs, data['train_s1'], data['train_s2'], data['train_s3'])
-    y_train = generate_labels(train_pairs, data['train_gt'])
+    train_feat_path = os.path.join(CACHE_DIR, 'train_feat.pkl')
+    val_feat_path = os.path.join(CACHE_DIR, 'val_feat.pkl')
 
-    print("\n[features] Extracting VAL features ...")
-    X_val = extract_features(val_pairs, data['val_s1'], data['val_s2'], data['val_s3'])
-    y_val = generate_labels(val_pairs, data['val_gt'])
+    if os.path.exists(train_feat_path):
+        print("\n[cache] Loading TRAIN features from cache...")
+        X_train, y_train = joblib.load(train_feat_path)
+    else:
+        print("\n[features] Extracting TRAIN features ...")
+        X_train = extract_features(train_pairs, data['train_s1'], data['train_s2'], data['train_s3'])
+        y_train = generate_labels(train_pairs, data['train_gt'])
+        joblib.dump((X_train, y_train), train_feat_path)
+
+    if os.path.exists(val_feat_path):
+        print("\n[cache] Loading VAL features from cache...")
+        X_val, y_val = joblib.load(val_feat_path)
+    else:
+        print("\n[features] Extracting VAL features ...")
+        X_val = extract_features(val_pairs, data['val_s1'], data['val_s2'], data['val_s3'])
+        y_val = generate_labels(val_pairs, data['val_gt'])
+        joblib.dump((X_val, y_val), val_feat_path)
 
     # ── 5. Train model ────────────────────────────────────────────────────
     print("\n" + "="*60)
@@ -150,20 +179,39 @@ def run_train():
     print("STAGE 8: Processing test data")
     print("="*60)
 
-    test_data = load_test_data()
-    test_data = _preprocess_all(test_data, ['test'])
+    test_data_path = os.path.join(CACHE_DIR, 'test_data.pkl')
+    if os.path.exists(test_data_path):
+        print("[cache] Loading preprocessed test data from cache...")
+        test_data = joblib.load(test_data_path)
+    else:
+        test_data = load_test_data()
+        test_data = _preprocess_all(test_data, ['test'])
+        joblib.dump(test_data, test_data_path)
 
     # ── 9. Block test data ────────────────────────────────────────────────
-    print("\n[blocking] Generating TEST candidates ...")
-    test_pairs = generate_candidates(
-        test_data['test_s1'], test_data['test_s2'], test_data['test_s3'],
-    )
+    test_pairs_path = os.path.join(CACHE_DIR, 'test_pairs.pkl')
+    if os.path.exists(test_pairs_path):
+        print("\n[cache] Loading TEST candidates from cache...")
+        test_pairs = joblib.load(test_pairs_path)
+    else:
+        print("\n[blocking] Generating TEST candidates ...")
+        test_pairs = generate_candidates(
+            test_data['test_s1'], test_data['test_s2'], test_data['test_s3'],
+        )
+        joblib.dump(test_pairs, test_pairs_path)
 
     # ── 10. Extract features + predict ────────────────────────────────────
-    print("\n[features] Extracting TEST features ...")
-    X_test = extract_features(
-        test_pairs, test_data['test_s1'], test_data['test_s2'], test_data['test_s3']
-    )
+    test_feat_path = os.path.join(CACHE_DIR, 'test_feat.pkl')
+    if os.path.exists(test_feat_path):
+        print("\n[cache] Loading TEST features from cache...")
+        X_test = joblib.load(test_feat_path)
+    else:
+        print("\n[features] Extracting TEST features ...")
+        X_test = extract_features(
+            test_pairs, test_data['test_s1'], test_data['test_s2'], test_data['test_s3']
+        )
+        joblib.dump(X_test, test_feat_path)
+
     test_probs = matcher.predict_proba(X_test)
 
     # ── 11. Format and save output ────────────────────────────────────────

@@ -1,4 +1,4 @@
-> **Version:** v1.6 | **Last updated:** 2026-09-25 18:58 IST | **By:** Antigravity
+> **Version:** v1.8 | **Last updated:** 2026-09-25 19:39 IST | **By:** Antigravity
 
 # Amazon ML Challenge 2026 — Project Master Index
 
@@ -47,6 +47,7 @@
 | [`context/environment-setup.md`](context/environment-setup.md) | File | Local environment reproduction steps per teammate |
 | [`context/experiment-log.md`](context/experiment-log.md) | File | **APPEND-ONLY** — every approach tried, params, CV score, commit |
 | [`context/submission-log.md`](context/submission-log.md) | File | **APPEND-ONLY** — every leaderboard submission with public score |
+| [`context/challenges_faced.md`](context/challenges_faced.md) | File | Log of pitfalls, errors, crashes, and performance bottlenecks encountered and resolved |
 | [`context/git-workflow.md`](context/git-workflow.md) | File | Branch naming, PR/merge rules, notebook conflict prevention |
 | [`context/team-roles.md`](context/team-roles.md) | File | Team member roles, focus areas, availability during 72h |
 | [`context/writeup-draft.md`](context/writeup-draft.md) | File | Living draft of the methodology document (internal WIP) |
@@ -94,6 +95,7 @@
 - Keep logic in `.py` modules under `SUBMISSION/code/business_entity_resolution/src/`; use thin Jupyter notebooks for exploration only
 - **Maximize Hardware Utilization**: Given the 72-hour time crunch, ensure maximum practical utilization of CPU resources. Use multiprocessing/multithreading for heavy pipeline stages to saturate the CPU. Avoid single-threaded bottlenecks.
 - **Proactive Bottleneck Resolution**: If any process is taking an unreasonably long time, stop it immediately, reconfigure/improve the code (e.g. swap `iterrows` for `itertuples`, use `loky` backend), and restart. Going forward, do a full pass of the code for performance bottlenecks before execution to ensure the fastest possible runtime given the implementation goals.
+- **Pipeline Caching / Checkpointing**: Always save intermediate assets (models, features, blocked candidate pairs, cleaned data) using `pickle` or `joblib` so that if the pipeline fails, work is not lost and can be resumed from the nearest save point to save time.
 
 ### Commit & Branch Conventions
 
@@ -188,6 +190,8 @@ With 4 people and multiple AI agents editing docs during a 72-hour hackathon, we
 
 | Version | Date | By | Summary |
 |---------|------|----|---------|
+| v1.8 | 2026-09-25 | Antigravity | Added context/challenges_faced.md to Master Index |
+| v1.7 | 2026-09-25 | Antigravity | Added Pipeline Caching / Checkpointing rule to save intermediate progress |
 | v1.6 | 2026-09-25 | Antigravity | Added Proactive Bottleneck Resolution rule to Coding Conventions |
 | v1.5 | 2026-09-25 | Antigravity | Added Maximize Hardware Utilization rule to Coding Conventions |
 | v1.4 | 2026-09-25 | Antigravity | Added skills/ and past-challenges-reference.md to Master Index. Fixed REPO path references to SUBMISSION. |

@@ -1,4 +1,4 @@
-> **Version:** v1.5 | **Last updated:** 2026-09-25 18:57 IST | **By:** Antigravity
+> **Version:** v1.7 | **Last updated:** 2026-09-25 19:39 IST | **By:** Antigravity
 
 # AI Agent Operating Manual
 
@@ -128,6 +128,8 @@ This project provides several standard Agent Skills located in the `skills/` dir
 - **Leave a note** if you modify a teammate's work-in-progress file
 - **Context Updation Rule:** Whenever the human explicitly states to "update the project context fully", you MUST systematically go through and update `agents.md`, `project.md`, and any relevant files in the `context/` directory to reflect the current state of the project.
 - **Proactive Bottleneck Resolution:** If any pipeline stage takes an unreasonably long time, stop it immediately, identify the bottleneck (e.g., replace `iterrows` with `itertuples`, add `loky` multiprocessing), refactor the code, and restart. Always proactively review code for performance bottlenecks before execution to ensure the fastest possible runtime given the goals.
+- **Pipeline Caching:** Always save intermediate assets (models, extracted features, candidate pairs) to disk using `pickle` or `joblib`. If the pipeline crashes or is interrupted, reload from the latest checkpoint instead of recomputing from scratch.
+- **Log Pitfalls:** Append any errors, crashes, bugs, performance bottlenecks, or tricky design issues you encounter and resolve to `context/challenges_faced.md`.
 
 ### ❌ DON'T
 
@@ -182,6 +184,8 @@ Specifically:
 
 | Version | Date | By | Summary |
 |---------|------|----|---------|
+| v1.7 | 2026-09-25 | Antigravity | Added Log Pitfalls rule to record issues in challenges_faced.md |
+| v1.6 | 2026-09-25 | Antigravity | Added Pipeline Caching rule to Do's to prevent lost work during crashes |
 | v1.5 | 2026-09-25 | Antigravity | Added Proactive Bottleneck Resolution rule to ensure maximum performance and prompt interruption of slow runs |
 | v1.4 | 2026-09-25 | Antigravity | Fixed test S1 row count assertion: 1,732,544 (verified) not 1,732,545 |
 | v1.3 | 2026-09-25 | Antigravity | Added Agent Skills section and updated rules on not overwriting better scores. Fixed REPO path references to SUBMISSION. |

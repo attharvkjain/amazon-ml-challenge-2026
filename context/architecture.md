@@ -1,4 +1,4 @@
-> **Version:** v2.2 | **Last updated:** 2026-09-25 18:58 IST | **By:** Antigravity
+> **Version:** v2.3 | **Last updated:** 2026-09-25 19:30 IST | **By:** Antigravity
 
 # Architecture — Business Entity Resolution Pipeline
 
@@ -145,7 +145,7 @@ flowchart LR
     H --> I["matching_results.tsv\n+ candidate_pairs.tsv"]
 ```
 
-**Performance Principle:** The pipeline processes millions of records. Stages MUST use multiprocessing/multithreading to maximize CPU utilization. Furthermore, proactive bottleneck resolution is required: if any process takes an unreasonably long time, it must be stopped, optimized (e.g. eliminating slow pandas loops), and restarted. Always do a full pass for performance bottlenecks before execution to ensure the fastest possible runtime.
+**Performance Principle:** The pipeline processes millions of records. Stages MUST use multiprocessing/multithreading to maximize CPU utilization. Furthermore, proactive bottleneck resolution is required: if any process takes an unreasonably long time, it must be stopped, optimized (e.g. eliminating slow pandas loops), and restarted. Always do a full pass for performance bottlenecks before execution to ensure the fastest possible runtime. Finally, implement pipeline caching (saving intermediate features, blocked candidates, etc.) to prevent work loss if a run crashes.
 
 ### Stage 1: Ingestion & Validation Split (`load.py`)
 
@@ -637,6 +637,7 @@ Country partitioning reduces memory by ~60% compared to full dataset operations.
 ## Changelog
 | Version | Date | By | Summary |
 |---------|------|----|---------|
+| v2.3 | 2026-09-25 | Antigravity | Updated Performance Principle to include pipeline caching/checkpointing |
 | v2.2 | 2026-09-25 | Antigravity | Updated Performance Principle to include proactive bottleneck resolution |
 | v2.1 | 2026-09-25 | Antigravity | Added performance principle requiring multiprocessing to maximize hardware utilization |
 | v2.0 | 2026-09-25 | Antigravity | Major rewrite: integrated EDA findings (country blocking verified safe, S1 100% Latin, script stats), country-first blocking strategy, validation split design, training diagnostics section, skills system integration, legal suffix preservation rule, Unicode-safe cleaning, multi-script ensemble transliteration, fixed package_submission.py path. Resolved all v1.0 open questions. |
