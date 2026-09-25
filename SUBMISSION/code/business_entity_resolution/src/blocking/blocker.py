@@ -23,30 +23,39 @@ def _process_batch(start: int, end: int, query_matrix: sparse.csr_matrix, index_
     # Sparse dot product releases GIL
     sim_matrix = batch.dot(index_matrix.T)
 
-    if sparse.issparse(sim_matrix):
-        sim_dense = sim_matrix.toarray()
-    else:
-        sim_dense = np.asarray(sim_matrix)
-
     batch_results = []
-    for row_idx in range(sim_dense.shape[0]):
-        row = sim_dense[row_idx]
-        if len(row) <= top_k:
-            top_indices = np.argsort(-row)
+    for i in range(sim_matrix.shape[0]):
+        row_start = sim_matrix.indptr[i]
+        row_end = sim_matrix.indptr[i+1]
+        
+        indices = sim_matrix.indices[row_start:row_end]
+        data = sim_matrix.data[row_start:row_end]
+        
+        if len(data) == 0:
+            batch_results.append([])
+            continue
+            
+        if len(data) <= top_k:
+            sorted_idx = np.argsort(-data)
+            top_indices = indices[sorted_idx]
+            top_data = data[sorted_idx]
         else:
-            top_indices = np.argpartition(-row, top_k)[:top_k]
-            top_indices = top_indices[np.argsort(-row[top_indices])]
-
-        pairs = [(int(idx), float(row[idx])) for idx in top_indices if row[idx] > 0]
+            part_idx = np.argpartition(-data, top_k)[:top_k]
+            sorted_subset_idx = np.argsort(-data[part_idx])
+            sorted_idx = part_idx[sorted_subset_idx]
+            top_indices = indices[sorted_idx]
+            top_data = data[sorted_idx]
+            
+        pairs = [(int(idx), float(val)) for idx, val in zip(top_indices, top_data)]
         batch_results.append(pairs)
-    
+        
     return batch_results
 
 
 def _sparse_top_k(query_matrix: sparse.csr_matrix,
                    index_matrix: sparse.csr_matrix,
                    top_k: int,
-                   batch_size: int = 500) -> list[list[tuple[int, float]]]:
+                   batch_size: int = 2000) -> list[list[tuple[int, float]]]:
     """
     Multithreaded batched sparse matrix top-K search.
     Uses 'threading' backend because scipy/numpy operations release the GIL,
