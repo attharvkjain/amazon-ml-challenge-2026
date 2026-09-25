@@ -55,7 +55,7 @@ def _process_batch(start: int, end: int, query_matrix: sparse.csr_matrix, index_
 def _sparse_top_k(query_matrix: sparse.csr_matrix,
                    index_matrix: sparse.csr_matrix,
                    top_k: int,
-                   batch_size: int = 2000) -> list[list[tuple[int, float]]]:
+                   batch_size: int = 200) -> list[list[tuple[int, float]]]:
     """
     Multithreaded batched sparse matrix top-K search.
     Uses 'threading' backend because scipy/numpy operations release the GIL,
