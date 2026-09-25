@@ -145,13 +145,12 @@ def generate_candidates(
                     scores_list.append(score)
             
             del s2_tfidf, s2_results
-            s2_df = pd.DataFrame({
-                's1_id': np.array(s1_ids)[s1_idx_list],
-                's2s3_id': np.array(s2_ids)[q_idx_list],
-                'source': 'S2',
-                'country': country,
-                'tfidf_score': np.array(scores_list, dtype=np.float32)
-            })
+            s2_df = pd.DataFrame()
+            s2_df['s1_id'] = [s1_ids[i] for i in s1_idx_list]
+            s2_df['s2s3_id'] = [s2_ids[i] for i in q_idx_list]
+            s2_df['source'] = pd.Categorical(['S2'] * len(s1_idx_list))
+            s2_df['country'] = pd.Categorical([country] * len(s1_idx_list))
+            s2_df['tfidf_score'] = np.array(scores_list, dtype=np.float32)
             del q_idx_list, s1_idx_list, scores_list
             all_pairs_dfs.append(s2_df)
             gc.collect()
@@ -171,13 +170,12 @@ def generate_candidates(
                     scores_list.append(score)
             
             del s3_tfidf, s3_results
-            s3_df = pd.DataFrame({
-                's1_id': np.array(s1_ids)[s1_idx_list],
-                's2s3_id': np.array(s3_ids)[q_idx_list],
-                'source': 'S3',
-                'country': country,
-                'tfidf_score': np.array(scores_list, dtype=np.float32)
-            })
+            s3_df = pd.DataFrame()
+            s3_df['s1_id'] = [s1_ids[i] for i in s1_idx_list]
+            s3_df['s2s3_id'] = [s3_ids[i] for i in q_idx_list]
+            s3_df['source'] = pd.Categorical(['S3'] * len(s1_idx_list))
+            s3_df['country'] = pd.Categorical([country] * len(s1_idx_list))
+            s3_df['tfidf_score'] = np.array(scores_list, dtype=np.float32)
             del q_idx_list, s1_idx_list, scores_list
             all_pairs_dfs.append(s3_df)
             gc.collect()
