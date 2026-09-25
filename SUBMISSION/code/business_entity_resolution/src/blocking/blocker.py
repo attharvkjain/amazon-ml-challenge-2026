@@ -103,7 +103,7 @@ def generate_candidates(
         countries = sorted(s1['country'].unique())
         
     print(f"[blocker] Countries: {countries}")
-    all_pairs = []
+    all_pairs_dfs = []
 
     for country in countries:
         print(f"\n[blocker] Processing country: {country}")
@@ -137,16 +137,23 @@ def generate_candidates(
             s2_results = _sparse_top_k(s2_tfidf, s1_tfidf, top_k)
             s2_ids = s2_c['entity_id'].tolist()
 
+            q_idx_list, s1_idx_list, scores_list = [], [], []
             for q_idx, matches in enumerate(s2_results):
                 for s1_idx, score in matches:
-                    all_pairs.append({
-                        's1_id': s1_ids[s1_idx],
-                        's2s3_id': s2_ids[q_idx],
-                        'source': 'S2',
-                        'country': country,
-                        'tfidf_score': score,
-                    })
+                    q_idx_list.append(q_idx)
+                    s1_idx_list.append(s1_idx)
+                    scores_list.append(score)
+            
             del s2_tfidf, s2_results
+            s2_df = pd.DataFrame({
+                's1_id': np.array(s1_ids)[s1_idx_list],
+                's2s3_id': np.array(s2_ids)[q_idx_list],
+                'source': 'S2',
+                'country': country,
+                'tfidf_score': np.array(scores_list, dtype=np.float32)
+            })
+            del q_idx_list, s1_idx_list, scores_list
+            all_pairs_dfs.append(s2_df)
             gc.collect()
 
         if len(s3_c) > 0:
@@ -156,22 +163,29 @@ def generate_candidates(
             s3_results = _sparse_top_k(s3_tfidf, s1_tfidf, top_k)
             s3_ids = s3_c['entity_id'].tolist()
 
+            q_idx_list, s1_idx_list, scores_list = [], [], []
             for q_idx, matches in enumerate(s3_results):
                 for s1_idx, score in matches:
-                    all_pairs.append({
-                        's1_id': s1_ids[s1_idx],
-                        's2s3_id': s3_ids[q_idx],
-                        'source': 'S3',
-                        'country': country,
-                        'tfidf_score': score,
-                    })
+                    q_idx_list.append(q_idx)
+                    s1_idx_list.append(s1_idx)
+                    scores_list.append(score)
+            
             del s3_tfidf, s3_results
+            s3_df = pd.DataFrame({
+                's1_id': np.array(s1_ids)[s1_idx_list],
+                's2s3_id': np.array(s3_ids)[q_idx_list],
+                'source': 'S3',
+                'country': country,
+                'tfidf_score': np.array(scores_list, dtype=np.float32)
+            })
+            del q_idx_list, s1_idx_list, scores_list
+            all_pairs_dfs.append(s3_df)
             gc.collect()
 
         del s1_tfidf, vectorizer
         gc.collect()
 
-    pairs_df = pd.DataFrame(all_pairs)
+    pairs_df = pd.concat(all_pairs_dfs, ignore_index=True) if all_pairs_dfs else pd.DataFrame()
     print(f"\n[blocker] Total candidate pairs: {len(pairs_df):,}")
 
     if save_path is not None:
