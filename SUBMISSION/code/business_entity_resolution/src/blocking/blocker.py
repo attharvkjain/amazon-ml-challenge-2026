@@ -54,19 +54,24 @@ def _process_batch(start: int, end: int, query_matrix: sparse.csr_matrix, index_
 
 def _sparse_top_k(query_matrix: sparse.csr_matrix,
                    index_matrix: sparse.csr_matrix,
-                   top_k: int,
-                   batch_size: int = 2000) -> list[list[tuple[int, float]]]:
+                   top_k: int) -> list[list[tuple[int, float]]]:
     """
     Multithreaded batched sparse matrix top-K search.
-    Uses 'threading' backend because scipy/numpy operations release the GIL,
-    avoiding memory copying overhead.
+    Uses 'threading' backend because scipy/numpy operations release the GIL.
+    Dynamically computes batch_size to strictly limit memory allocation.
     """
     n_queries = query_matrix.shape[0]
+    n_index = index_matrix.shape[0]
+    
+    # We want max possible non-zeros per batch to be ~50,000,000 (which takes ~200MB).
+    # This prevents OOM on large countries like the US (3.1M index items)
+    batch_size = max(1, 50_000_000 // n_index)
+    
     n_jobs = max(1, multiprocessing.cpu_count() - 2)
     
     tasks = [(start, min(start + batch_size, n_queries)) for start in range(0, n_queries, batch_size)]
     
-    print(f"  TF-IDF search on {n_jobs} threads ({len(tasks)} batches) ...")
+    print(f"  TF-IDF search on {n_jobs} threads ({len(tasks)} batches of size {batch_size}) ...")
     
     # Threading backend is safe and zero-copy since scipy sparse matrices are passed by reference
     results_list = Parallel(n_jobs=n_jobs, backend='threading')(

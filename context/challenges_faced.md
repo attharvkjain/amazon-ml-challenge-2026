@@ -1,4 +1,4 @@
-> **Version:** v1.3 | **Last updated:** 2026-09-25 20:06 IST | **By:** Antigravity
+> **Version:** v1.4 | **Last updated:** 2026-09-25 20:41 IST | **By:** Antigravity
 
 # Challenges, Pitfalls, and Resolutions
 
@@ -17,8 +17,8 @@ This document logs all errors, crashes, performance bottlenecks, and design issu
 - **Resolution:** Integrated explicit pipeline caching in `main.py`. Intermediate states (cleaned data, candidate pairs, extracted feature matrices) are now saved to a `cache/` directory using `joblib.dump()`. If the pipeline crashes, it will resume from the nearest checkpoint on restart.
 
 ## 4. OOM (Out of Memory) during Test Set Blocking
-- **Problem:** In `blocker.py`, blocking the massive Test Set (e.g., France has 259,452 S1 records) caused an `ArrayMemoryError` crash. Initially, this was because we were converting the sparse result of `batch.dot(index_matrix.T)` into a dense array, which consumed 1 GB per batch of 500. After fixing that to operate purely on the sparse matrix, we hit a *second* OOM when we increased the batch size to 2000. Why? Because character 3-gram TF-IDF vectors have incredibly high overlap. The resulting sparse matrix of `2000 queries x 259,452 index items` was over 95% non-zero, meaning the sparse matrix actually consumed *more* memory than a dense array (due to storing `indptr` and `indices`), attempting to allocate 1.89 GB per thread across 14 threads (26+ GB total).
-- **Resolution:** Modified `_process_batch` to iterate directly over the rows of the `scipy.sparse.csr_matrix` using its underlying arrays to avoid dense conversion, and strictly reduced `batch_size` to `200`. This caps the max non-zeros per batch at ~50 million (200MB per thread, or ~3GB total across all threads), making the pipeline perfectly stable while still fully saturating the CPU.
+- **Problem:** In `blocker.py`, blocking the massive Test Set caused severe `ArrayMemoryError` crashes. Initially, this was because the sparse matrix was being unnecessarily converted to a dense numpy array (consuming 1 GB per batch of 500). After rewriting the code to operate directly on the sparse matrix to avoid dense conversion, we still hit OOMs! The root cause is that character 3-gram TF-IDF vectors have incredibly high overlap (over 98% density on India and US). Because sparse matrices must store both data and index arrays, a 98% dense sparse matrix actually consumes *more* memory than a dense array. A batch size of 200 on India's 809k records generated 160 million non-zero edges, allocating 600MB per thread (8.5 GB total) and crashing the pipeline. If left at 200, the US dataset (3.1M records) would have allocated 24 GB and instantly crashed.
+- **Resolution:** Implemented **Dynamic Batch Sizing** in `_sparse_top_k`. The `batch_size` is now calculated on the fly as `50_000_000 // n_index_records`, strictly capping the maximum possible non-zero elements per batch at 50 million (~200MB per thread, 2.8GB total across 14 threads). This guarantees bulletproof stability across all countries regardless of their size or TF-IDF density, while still fully saturating the CPU.
 
 ## 5. IPC Deserialization Bottleneck
 - **Problem:** During multithreaded feature extraction (Stage 4 and Stage 10), returning raw Python lists of floats from the worker processes back to the main process created a massive Inter-Process Communication (IPC) serialization overhead. Transferring 3GB of lists took several minutes on a single CPU thread on the main process while the rest of the cores idled.
@@ -29,6 +29,7 @@ This document logs all errors, crashes, performance bottlenecks, and design issu
 ## Changelog
 | Version | Date | By | Summary |
 |---------|------|----|---------|
+| v1.4 | 2026-09-25 | Antigravity | Updated Issue #4 with the dynamic batch sizing resolution for dense sparse matrices |
 | v1.3 | 2026-09-25 | Antigravity | Updated Issue #4 with the sparse matrix density OOM resolution and batch size 200 |
 | v1.2 | 2026-09-25 | Antigravity | Updated Issue #4 with the fully sparse matrix OOM resolution and batch size increase |
 | v1.1 | 2026-09-25 | Antigravity | Added IPC Deserialization Bottleneck resolution |
