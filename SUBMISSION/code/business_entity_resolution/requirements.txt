@@ -14,6 +14,7 @@ python-Levenshtein
 scikit-learn
 xgboost
 lightgbm
+matplotlib
 
 # NLP / Embeddings (uncomment as needed)
 # sentence-transformers

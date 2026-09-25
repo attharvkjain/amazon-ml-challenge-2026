@@ -1,4 +1,4 @@
-> **Version:** v1.0 | **Last updated:** 2026-09-25 02:30 IST | **By:** Member 1
+> **Version:** v1.1 | **Last updated:** 2026-09-25 14:28 IST | **By:** Antigravity
 
 # Environment Setup
 
@@ -46,14 +46,17 @@ pip install -r requirements.txt
 
 ## Per-Teammate Setup
 
-### Member 1
+### Kingapplefruit
 
 | Field | Value |
 |-------|-------|
-| **OS** | TBD |
-| **Python version** | TBD |
-| **GPU** | TBD |
-| **Special notes** | TBD |
+| **OS** | Microsoft Windows 11 Pro |
+| **Python version** | Python 3.10.9 |
+| **GPU** | NVIDIA GeForce RTX 5060, 8151 MiB |
+| **RAM** | 31.11 GB |
+| **Disk (F:)** | Free 133.59 GB / Total 196.78 GB |
+| **Key Packages** | numpy 2.2.6, pandas 2.3.3, RapidFuzz 3.14.5, scikit-learn 1.7.2, tqdm 4.70.1 |
+| **Special notes** | Default Python environment has no `torch` installed initially. |
 
 ### Member 2
 
@@ -123,4 +126,5 @@ Data/6ab10eb3b23ba_student_resource/student_resource/
 
 | Version | Date | By | Summary |
 |---------|------|----|---------|
+| v1.1 | 2026-09-25 | Antigravity | Added exact environment specs for Kingapplefruit. |
 | v1.0 | 2026-09-25 | Member 1 | Initial skeleton created |

@@ -1,0 +1,400 @@
+"""
+Main entry point — chains all pipeline stages.
+
+Usage:
+    python src/main.py --mode train     # Train + predict on test + output files
+    python src/main.py --mode predict   # Load model + predict on test
+    python src/main.py --mode cv        # Cross-validation on training data
+"""
+from __future__ import annotations
+
+import argparse
+import subprocess
+import sys
+import os
+import time
+import gc
+import numpy as np
+import pandas as pd
+
+# Ensure src/ is on the path
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from config import (
+    SAMPLE_FRAC, OUTPUT_DIR, DIAGNOSTICS_DIR, VALIDATE_SCRIPT,
+    TEST_DIR, TEST_S1_COUNT,
+)
+from preprocessing.load import load_train_data, load_test_data
+from preprocessing.clean import preprocess_dataframe
+from preprocessing.transliterate import apply_transliteration
+from blocking.blocker import generate_candidates, compute_blocking_recall
+from features.similarity import extract_features, generate_labels, FEATURE_NAMES
+from models.matcher import EntityMatcher
+from postprocessing.threshold import sweep_threshold, format_and_save_output
+from evaluation.metrics import compute_diagnostics, f05_macro
+
+
+def _preprocess_all(data: dict, splits: list[str]) -> dict:
+    """Apply cleaning and transliteration to all dataframes in the data dict."""
+    for split in splits:
+        for key_suffix in ['s1', 's2', 's3']:
+            key = f"{split}_{key_suffix}"
+            if key in data:
+                print(f"\n[preprocess] Cleaning {key} ({len(data[key]):,} records) ...")
+                data[key] = preprocess_dataframe(data[key])
+
+                is_s1 = key_suffix == 's1'
+                print(f"[preprocess] Transliterating {key} (is_s1={is_s1}) ...")
+                data[key] = apply_transliteration(data[key], is_s1=is_s1)
+    return data
+
+
+def run_train():
+    """
+    Full training pipeline:
+    1. Load train data with train/val split
+    2. Clean + transliterate
+    3. Block: generate candidate pairs
+    4. Extract features + labels
+    5. Train LightGBM
+    6. Sweep threshold on val set
+    7. Load test data, clean + transliterate
+    8. Block test, extract features, predict
+    9. Format and write output
+    10. Run validation
+    11. Generate diagnostics
+    """
+    total_start = time.time()
+
+    # ── 1. Load data ──────────────────────────────────────────────────────
+    print("\n" + "="*60)
+    print("STAGE 1: Loading data")
+    print("="*60)
+    data = load_train_data(sample_frac=SAMPLE_FRAC)
+
+    # ── 2. Preprocess ─────────────────────────────────────────────────────
+    print("\n" + "="*60)
+    print("STAGE 2: Preprocessing (clean + transliterate)")
+    print("="*60)
+    data = _preprocess_all(data, ['train', 'val'])
+
+    # ── 3. Blocking ───────────────────────────────────────────────────────
+    print("\n" + "="*60)
+    print("STAGE 3: Blocking (TF-IDF candidate generation)")
+    print("="*60)
+
+    print("\n[blocking] Generating TRAIN candidates ...")
+    train_pairs = generate_candidates(
+        data['train_s1'], data['train_s2'], data['train_s3']
+    )
+    train_blocking_recall = compute_blocking_recall(train_pairs, data['train_gt'])
+
+    print("\n[blocking] Generating VAL candidates ...")
+    val_pairs = generate_candidates(
+        data['val_s1'], data['val_s2'], data['val_s3']
+    )
+    val_blocking_recall = compute_blocking_recall(val_pairs, data['val_gt'])
+
+    # ── 4. Feature extraction ─────────────────────────────────────────────
+    print("\n" + "="*60)
+    print("STAGE 4: Feature extraction")
+    print("="*60)
+
+    print("\n[features] Extracting TRAIN features ...")
+    X_train = extract_features(train_pairs, data['train_s1'], data['train_s2'], data['train_s3'])
+    y_train = generate_labels(train_pairs, data['train_gt'])
+
+    print("\n[features] Extracting VAL features ...")
+    X_val = extract_features(val_pairs, data['val_s1'], data['val_s2'], data['val_s3'])
+    y_val = generate_labels(val_pairs, data['val_gt'])
+
+    # ── 5. Train model ────────────────────────────────────────────────────
+    print("\n" + "="*60)
+    print("STAGE 5: Training LightGBM")
+    print("="*60)
+
+    matcher = EntityMatcher()
+    matcher.train(X_train, y_train, X_val, y_val, feature_names=FEATURE_NAMES)
+
+    # ── 6. Threshold tuning on val set ────────────────────────────────────
+    print("\n" + "="*60)
+    print("STAGE 6: Threshold tuning")
+    print("="*60)
+
+    val_probs = matcher.predict_proba(X_val)
+    val_s1_ids = set(data['val_s1']['entity_id'])
+    best_threshold, best_f05 = sweep_threshold(
+        val_pairs, val_probs, data['val_gt'], all_s1_ids=val_s1_ids
+    )
+
+    # ── 7. Diagnostics ────────────────────────────────────────────────────
+    print("\n" + "="*60)
+    print("STAGE 7: Generating diagnostics")
+    print("="*60)
+
+    importance = matcher.feature_importance(FEATURE_NAMES)
+    diagnostics = compute_diagnostics(
+        pairs_df=val_pairs,
+        probabilities=val_probs,
+        labels=y_val,
+        ground_truth=data['val_gt'],
+        all_s1_ids=val_s1_ids,
+        feature_names=FEATURE_NAMES,
+        feature_importances=importance,
+        threshold=best_threshold,
+        blocking_recall=val_blocking_recall,
+    )
+
+    # ── 8. Load and preprocess test data ──────────────────────────────────
+    print("\n" + "="*60)
+    print("STAGE 8: Processing test data")
+    print("="*60)
+
+    test_data = load_test_data()
+    test_data = _preprocess_all(test_data, ['test'])
+
+    # ── 9. Block test data ────────────────────────────────────────────────
+    print("\n[blocking] Generating TEST candidates ...")
+    test_pairs = generate_candidates(
+        test_data['test_s1'], test_data['test_s2'], test_data['test_s3'],
+    )
+
+    # ── 10. Extract features + predict ────────────────────────────────────
+    print("\n[features] Extracting TEST features ...")
+    X_test = extract_features(
+        test_pairs, test_data['test_s1'], test_data['test_s2'], test_data['test_s3']
+    )
+    test_probs = matcher.predict_proba(X_test)
+
+    # ── 11. Format and save output ────────────────────────────────────────
+    print("\n" + "="*60)
+    print("STAGE 9: Formatting and saving output")
+    print("="*60)
+
+    test_s1_ids = test_data['test_s1']['entity_id']
+    matching_df = format_and_save_output(
+        test_pairs, test_probs, best_threshold, test_s1_ids,
+    )
+
+    # Verify row count
+    assert len(matching_df) == TEST_S1_COUNT, \
+        f"Expected {TEST_S1_COUNT} rows, got {len(matching_df)}"
+    print(f"[output] ✓ Row count verified: {len(matching_df):,}")
+
+    # Save model
+    matcher.save()
+
+    # ── 12. Validate submission ───────────────────────────────────────────
+    print("\n" + "="*60)
+    print("STAGE 10: Validating submission")
+    print("="*60)
+    _run_validation()
+
+    total_time = time.time() - total_start
+    print(f"\n{'='*60}")
+    print(f"PIPELINE COMPLETE in {total_time/60:.1f} minutes")
+    print(f"  Val F0.5: {best_f05:.4f} @ threshold {best_threshold:.3f}")
+    print(f"  Blocking recall (train): {train_blocking_recall:.4f}")
+    print(f"  Blocking recall (val): {val_blocking_recall:.4f}")
+    print(f"{'='*60}")
+
+    return {
+        'val_f05': best_f05,
+        'threshold': best_threshold,
+        'train_blocking_recall': train_blocking_recall,
+        'val_blocking_recall': val_blocking_recall,
+        'diagnostics': diagnostics,
+    }
+
+
+def run_predict():
+    """Load trained model and predict on test data."""
+    print("\n[predict] Loading model ...")
+    matcher = EntityMatcher()
+    matcher.load()
+
+    # Load and preprocess test data
+    test_data = load_test_data()
+    test_data = _preprocess_all(test_data, ['test'])
+
+    # Block
+    print("\n[blocking] Generating TEST candidates ...")
+    test_pairs = generate_candidates(
+        test_data['test_s1'], test_data['test_s2'], test_data['test_s3'],
+    )
+
+    # Features
+    print("\n[features] Extracting TEST features ...")
+    X_test = extract_features(
+        test_pairs, test_data['test_s1'], test_data['test_s2'], test_data['test_s3']
+    )
+    test_probs = matcher.predict_proba(X_test)
+
+    # Use default threshold (0.5) since we don't have val set in predict mode
+    # A better approach would be to save the threshold during training
+    threshold = 0.5
+    test_s1_ids = test_data['test_s1']['entity_id']
+    matching_df = format_and_save_output(
+        test_pairs, test_probs, threshold, test_s1_ids,
+    )
+
+    assert len(matching_df) == TEST_S1_COUNT
+    _run_validation()
+
+
+def run_cv():
+    """5-fold stratified group CV on training data."""
+    from sklearn.model_selection import StratifiedGroupKFold
+    from evaluation.metrics import f05_macro as compute_f05
+
+    print("\n" + "="*60)
+    print("CROSS-VALIDATION MODE")
+    print("="*60)
+
+    # Load full training data (no val split needed for CV)
+    data = load_train_data(sample_frac=SAMPLE_FRAC, val_frac=0.0)
+
+    # For CV mode we need train_s1 to be all S1, etc.
+    # But our load function always splits — let's load with val_frac=0
+    # Actually, let's use full data by reloading with val_frac very small
+    # and recombining. For now, let's just use the train split from normal loading.
+
+    # Re-load with standard split
+    data = load_train_data(sample_frac=SAMPLE_FRAC)
+
+    # Combine train + val back for CV
+    all_s1 = pd.concat([data['train_s1'], data['val_s1']], ignore_index=True)
+    all_s2 = pd.concat([data['train_s2'], data['val_s2']], ignore_index=True)
+    all_s3 = pd.concat([data['train_s3'], data['val_s3']], ignore_index=True)
+    all_gt = {**data['train_gt'], **data['val_gt']}
+
+    # Preprocess
+    combined = {'all_s1': all_s1, 'all_s2': all_s2, 'all_s3': all_s3}
+    for key in combined:
+        print(f"\n[preprocess] Cleaning {key} ({len(combined[key]):,} records) ...")
+        combined[key] = preprocess_dataframe(combined[key])
+        is_s1 = key.endswith('s1')
+        print(f"[preprocess] Transliterating {key} (is_s1={is_s1}) ...")
+        combined[key] = apply_transliteration(combined[key], is_s1=is_s1)
+
+    all_s1 = combined['all_s1']
+    all_s2 = combined['all_s2']
+    all_s3 = combined['all_s3']
+
+    # Set up CV
+    s1_ids = all_s1['entity_id'].values
+    s1_countries = all_s1['country'].values
+
+    cv = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=42)
+    fold_scores = []
+
+    for fold_idx, (train_idx, val_idx) in enumerate(cv.split(all_s1, s1_countries, s1_ids)):
+        print(f"\n{'='*60}")
+        print(f"FOLD {fold_idx + 1}/5")
+        print(f"{'='*60}")
+
+        fold_s1_train = all_s1.iloc[train_idx]
+        fold_s1_val = all_s1.iloc[val_idx]
+        fold_s1_train_ids = set(fold_s1_train['entity_id'])
+        fold_s1_val_ids = set(fold_s1_val['entity_id'])
+
+        # Split GT
+        fold_train_gt = {k: v for k, v in all_gt.items() if k in fold_s1_train_ids}
+        fold_val_gt = {k: v for k, v in all_gt.items() if k in fold_s1_val_ids}
+
+        # Split S2/S3 by matched IDs
+        train_rev = {}
+        for s1_id, mids in fold_train_gt.items():
+            for mid in mids:
+                train_rev[mid] = s1_id
+        val_rev = {}
+        for s1_id, mids in fold_val_gt.items():
+            for mid in mids:
+                val_rev[mid] = s1_id
+
+        train_matched = set(train_rev.keys())
+        val_matched = set(val_rev.keys())
+
+        fold_s2_train = all_s2[all_s2['entity_id'].isin(train_matched) |
+                               ~all_s2['entity_id'].isin(train_matched | val_matched)]
+        fold_s2_val = all_s2[all_s2['entity_id'].isin(val_matched)]
+        fold_s3_train = all_s3[all_s3['entity_id'].isin(train_matched) |
+                               ~all_s3['entity_id'].isin(train_matched | val_matched)]
+        fold_s3_val = all_s3[all_s3['entity_id'].isin(val_matched)]
+
+        # Block
+        train_pairs = generate_candidates(fold_s1_train, fold_s2_train, fold_s3_train)
+        val_pairs = generate_candidates(fold_s1_val, fold_s2_val, fold_s3_val)
+
+        # Features
+        X_train = extract_features(train_pairs, fold_s1_train, fold_s2_train, fold_s3_train)
+        y_train = generate_labels(train_pairs, fold_train_gt)
+        X_val = extract_features(val_pairs, fold_s1_val, fold_s2_val, fold_s3_val)
+        y_val = generate_labels(val_pairs, fold_val_gt)
+
+        # Train
+        matcher = EntityMatcher()
+        matcher.train(X_train, y_train, X_val, y_val, feature_names=FEATURE_NAMES)
+
+        # Predict + threshold
+        val_probs = matcher.predict_proba(X_val)
+        best_t, best_f05 = sweep_threshold(val_pairs, val_probs, fold_val_gt, fold_s1_val_ids)
+
+        fold_scores.append(best_f05)
+        print(f"  Fold {fold_idx + 1} F0.5: {best_f05:.4f} @ threshold {best_t:.3f}")
+
+        gc.collect()
+
+    mean_f05 = np.mean(fold_scores)
+    std_f05 = np.std(fold_scores)
+    print(f"\n{'='*60}")
+    print(f"CV RESULTS: F0.5 = {mean_f05:.4f} +- {std_f05:.4f}")
+    print(f"  Per-fold: {[f'{s:.4f}' for s in fold_scores]}")
+    print(f"{'='*60}")
+
+    return {'cv_mean': mean_f05, 'cv_std': std_f05, 'fold_scores': fold_scores}
+
+
+def _run_validation():
+    """Run the official validate_submission.py script."""
+    matching_path = os.path.join(OUTPUT_DIR, 'matching_results.tsv')
+    candidate_path = os.path.join(OUTPUT_DIR, 'candidate_pairs.tsv')
+    test_dir = str(TEST_DIR)
+
+    cmd = [
+        sys.executable, str(VALIDATE_SCRIPT),
+        '--matching', matching_path,
+        '--candidate', candidate_path,
+        '--test-dir', test_dir,
+    ]
+
+    print(f"[validate] Running: {' '.join(cmd)}")
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    print(result.stdout)
+    if result.stderr:
+        print(result.stderr)
+
+    if result.returncode != 0:
+        print("[validate] ❌ VALIDATION FAILED")
+    else:
+        print("[validate] ✓ VALIDATION PASSED")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Business Entity Resolution Pipeline"
+    )
+    parser.add_argument(
+        "--mode",
+        choices=["train", "predict", "cv"],
+        default="train",
+        help="Pipeline mode (default: train)"
+    )
+    args = parser.parse_args()
+
+    if args.mode == "train":
+        run_train()
+    elif args.mode == "predict":
+        run_predict()
+    elif args.mode == "cv":
+        run_cv()

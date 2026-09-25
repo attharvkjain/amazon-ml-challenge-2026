@@ -1,4 +1,4 @@
-> **Version:** v1.1 | **Last updated:** 2026-09-25 14:27 IST | **By:** Antigravity
+> **Version:** v1.3 | **Last updated:** 2026-09-25 17:05 IST | **By:** Antigravity
 
 # Problem Statement & Data
 
@@ -35,7 +35,7 @@ Each source file has **4 columns** (tab-separated `.tsv`):
 | Split | Source 1 | Source 2 | Source 3 | Total |
 |-------|----------|----------|----------|-------|
 | **Train** | 2,206,821 | 5,034,617 | 5,285,604 | 12,527,042 |
-| **Test** | 1,732,545 | 4,887,274 | 5,082,317 | 11,702,136 |
+| **Test** | 1,732,544 | 4,887,273 | 5,082,316 | 11,702,133 |
 
 ### Country Distribution
 
@@ -87,7 +87,7 @@ Two tab-separated files in `SUBMISSION/output/`:
 | `source1_entity_id` | S1 entity ID |
 | `matched_entity_ids` | Comma-separated S2/S3 IDs (empty for singletons) |
 
-- Exactly 1,732,545 rows (one per S1 test entity)
+- Exactly 1,732,544 rows (one per S1 test entity)
 - No duplicate IDs within a list, no duplicate S1 rows
 
 ### `candidate_pairs.tsv` (audit only, not scored)
@@ -135,11 +135,23 @@ python ../Data/6ab10eb3b23ba_student_resource/student_resource/utils/validate_su
 2. **Cross-script Indian names**: Standard string similarity returns 0.0 between Latin and Indic script versions
 3. **Tab-separated files**: Reading without `sep='\t'` silently produces a single column
 
+### EDA-Verified Facts (2026-09-25)
+
+4. **Country blocking is safe**: Exhaustive check of 7,638,365 match pairs → zero cross-country matches. A business in one country never matches one in another.
+5. **S1 is 100% Latin script**: Zero non-Latin characters in any S1 field. Transliteration is one-way (S2/S3 → Latin to match S1).
+6. **S2 has ~17% non-Latin records, S3 has ~13%**: Transliteration needed for these to match S1.
+7. **Each S2/S3 record maps to exactly 1 S1 entity**: Zero duplicates confirmed. One-to-one constraint on the S2/S3 side.
+8. **Distractors**: S2 26.6%, S3 25.4% — roughly one-quarter of S2/S3 records have no match in S1.
+9. **Match count**: Median 4 per S1 entity, max 11, 99.99th percentile = 10.
+10. **Test S1 count**: **1,732,544** (verified from file). Original docs said 1,732,545 — corrected everywhere.
+
 ---
 
 ## Changelog
 
 | Version | Date | By | Summary |
 |---------|------|----|---------|
+| v1.3 | 2026-09-25 | Antigravity | Fixed test record counts to verified values: S1=1,732,544, S2=4,887,273, S3=5,082,316 (was off by 1-3) |
+| v1.2 | 2026-09-25 | Antigravity | Added EDA-verified facts: country blocking safe, S1 100% Latin, non-Latin %, match stats, distractor rates, test S1 count discrepancy |
 | v1.1 | 2026-09-25 | Antigravity | Updated Constraints section with exact quotes from PDFs. Fixed REPO path references to SUBMISSION. |
 | v1.0 | 2026-09-25 | Member 1 | Initial skeleton with known details from problem statement |

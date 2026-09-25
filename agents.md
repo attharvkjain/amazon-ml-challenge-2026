@@ -1,4 +1,4 @@
-> **Version:** v1.3 | **Last updated:** 2026-09-25 14:27 IST | **By:** Antigravity
+> **Version:** v1.5 | **Last updated:** 2026-09-25 18:57 IST | **By:** Antigravity
 
 # AI Agent Operating Manual
 
@@ -93,9 +93,9 @@ python -m pytest SUBMISSION/code/business_entity_resolution/src/ -v
 ```python
 import pandas as pd
 
-# matching_results.tsv must have exactly 1,732,545 rows (one per S1 test entity)
+# matching_results.tsv must have exactly 1,732,544 rows (one per S1 test entity)
 df = pd.read_csv("SUBMISSION/output/matching_results.tsv", sep="\t")
-assert len(df) == 1_732_545, f"Expected 1,732,545 rows, got {len(df)}"
+assert len(df) == 1_732_544, f"Expected 1,732,544 rows, got {len(df)}"
 assert list(df.columns) == ["source1_entity_id", "matched_entity_ids"]
 ```
 
@@ -127,6 +127,7 @@ This project provides several standard Agent Skills located in the `skills/` dir
 - **Use `sep='\t'`** for all data file I/O — files are tab-separated, not comma-separated
 - **Leave a note** if you modify a teammate's work-in-progress file
 - **Context Updation Rule:** Whenever the human explicitly states to "update the project context fully", you MUST systematically go through and update `agents.md`, `project.md`, and any relevant files in the `context/` directory to reflect the current state of the project.
+- **Proactive Bottleneck Resolution:** If any pipeline stage takes an unreasonably long time, stop it immediately, identify the bottleneck (e.g., replace `iterrows` with `itertuples`, add `loky` multiprocessing), refactor the code, and restart. Always proactively review code for performance bottlenecks before execution to ensure the fastest possible runtime given the goals.
 
 ### ❌ DON'T
 
@@ -181,6 +182,8 @@ Specifically:
 
 | Version | Date | By | Summary |
 |---------|------|----|---------|
+| v1.5 | 2026-09-25 | Antigravity | Added Proactive Bottleneck Resolution rule to ensure maximum performance and prompt interruption of slow runs |
+| v1.4 | 2026-09-25 | Antigravity | Fixed test S1 row count assertion: 1,732,544 (verified) not 1,732,545 |
 | v1.3 | 2026-09-25 | Antigravity | Added Agent Skills section and updated rules on not overwriting better scores. Fixed REPO path references to SUBMISSION. |
 | v1.2 | 2026-09-25 | Antigravity | Added Context Updation Rule |
 | v1.1 | 2026-09-25 | Member 1 | Updated paths to match submission package layout (SUBMISSION/code/business_entity_resolution/src/) |

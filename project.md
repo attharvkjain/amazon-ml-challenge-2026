@@ -1,4 +1,4 @@
-> **Version:** v1.4 | **Last updated:** 2026-09-25 14:26 IST | **By:** Antigravity
+> **Version:** v1.6 | **Last updated:** 2026-09-25 18:58 IST | **By:** Antigravity
 
 # Amazon ML Challenge 2026 — Project Master Index
 
@@ -50,12 +50,15 @@
 | [`context/git-workflow.md`](context/git-workflow.md) | File | Branch naming, PR/merge rules, notebook conflict prevention |
 | [`context/team-roles.md`](context/team-roles.md) | File | Team member roles, focus areas, availability during 72h |
 | [`context/writeup-draft.md`](context/writeup-draft.md) | File | Living draft of the methodology document (internal WIP) |
+| [`context/umbrella-research.md`](context/umbrella-research.md) | File | Consolidated umbrella research findings on paradigms and optimizations |
+| [`context/architecture.md`](context/architecture.md) | File | Pipeline architecture design — repo layout, data flow, validation, model shortlist, risks |
 | [`SUBMISSION/code/business_entity_resolution/src/`](SUBMISSION/code/business_entity_resolution/src/) | Folder | **All pipeline source code** — submission package location |
 | [`SUBMISSION/code/business_entity_resolution/README.md`](SUBMISSION/code/business_entity_resolution/README.md) | File | Reproduction instructions (ships in submission zip) |
 | [`SUBMISSION/code/business_entity_resolution/requirements.txt`](SUBMISSION/code/business_entity_resolution/requirements.txt) | File | Pinned dependencies (ships in submission zip) |
 | [`SUBMISSION/output/`](SUBMISSION/output/) | Folder | Submission output files (`matching_results.tsv`, `candidate_pairs.tsv`) |
 | [`scripts/package_submission.py`](scripts/package_submission.py) | File | Creates the submission zip from repo contents |
 | [`Analysis and Research/`](Analysis%20and%20Research/) | Folder | Pre-competition analysis & winner playbook (existing) |
+| [`Analysis and Research/research_sources.xlsx`](Analysis%20and%20Research/research_sources.xlsx) | File | Excel sheet containing all cited sources during the umbrella research phase |
 | [`Data/`](Data/) | Folder | Raw dataset — **DO NOT commit to git** (in `.gitignore`) |
 | [`amazon docs given/`](amazon%20docs%20given/) | Folder | Official problem statement & guidelines PDFs |
 | [`notebooks/`](notebooks/) | Folder | Jupyter notebooks (clear outputs before committing) |
@@ -89,6 +92,8 @@
 - f-strings over `.format()`
 - All data files are **tab-separated** — always use `sep='\t'` when reading/writing
 - Keep logic in `.py` modules under `SUBMISSION/code/business_entity_resolution/src/`; use thin Jupyter notebooks for exploration only
+- **Maximize Hardware Utilization**: Given the 72-hour time crunch, ensure maximum practical utilization of CPU resources. Use multiprocessing/multithreading for heavy pipeline stages to saturate the CPU. Avoid single-threaded bottlenecks.
+- **Proactive Bottleneck Resolution**: If any process is taking an unreasonably long time, stop it immediately, reconfigure/improve the code (e.g. swap `iterrows` for `itertuples`, use `loky` backend), and restart. Going forward, do a full pass of the code for performance bottlenecks before execution to ensure the fastest possible runtime given the implementation goals.
 
 ### Commit & Branch Conventions
 
@@ -183,6 +188,10 @@ With 4 people and multiple AI agents editing docs during a 72-hour hackathon, we
 
 | Version | Date | By | Summary |
 |---------|------|----|---------|
+| v1.6 | 2026-09-25 | Antigravity | Added Proactive Bottleneck Resolution rule to Coding Conventions |
+| v1.5 | 2026-09-25 | Antigravity | Added Maximize Hardware Utilization rule to Coding Conventions |
 | v1.4 | 2026-09-25 | Antigravity | Added skills/ and past-challenges-reference.md to Master Index. Fixed REPO path references to SUBMISSION. |
+| v1.3 | 2026-09-25 | Antigravity | Added context/architecture.md to Master Index |
+| v1.2 | 2026-09-25 | Antigravity | Added context/umbrella-research.md and Analysis and Research/research_sources.xlsx to Master Index |
 | v1.1 | 2026-09-25 | Member 1 | Restructured repo to match submission package layout; updated master index, .gitignore, code paths |
 | v1.0 | 2026-09-25 | Member 1 | Initial skeleton created |
