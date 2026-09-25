@@ -63,9 +63,8 @@ def _sparse_top_k(query_matrix: sparse.csr_matrix,
     n_queries = query_matrix.shape[0]
     n_index = index_matrix.shape[0]
     
-    # We want max possible non-zeros per batch to be ~50,000,000 (which takes ~200MB).
-    # This prevents OOM on large countries like the US (3.1M index items)
-    batch_size = max(1, 50_000_000 // n_index)
+    # We are using Word Unigrams, so the density is <0.1%. We can safely use a massive batch size!
+    batch_size = 50_000
     
     n_jobs = max(1, multiprocessing.cpu_count() - 2)
     
