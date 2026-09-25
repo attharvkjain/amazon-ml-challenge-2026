@@ -63,10 +63,8 @@ def _sparse_top_k(query_matrix: sparse.csr_matrix,
     n_queries = query_matrix.shape[0]
     n_index = index_matrix.shape[0]
     
-    # Word Unigrams still have ~25% density due to common words just under max_df.
-    # 500 queries * 800k = 400M pairs -> 100M non-zeros -> ~400MB per thread.
-    # This prevents the 75GB OOM while still reducing Python loops by 8x (vs batch_size 61).
-    batch_size = 500
+    # With max_df=0.01, the matrix is near 0% dense. We can safely use a massive batch size!
+    batch_size = 50_000
     
     n_jobs = max(1, multiprocessing.cpu_count() - 2)
     
@@ -122,7 +120,7 @@ def generate_candidates(
             analyzer='word',
             ngram_range=(1, 1),
             max_features=TFIDF_MAX_FEATURES,
-            max_df=0.25,
+            max_df=0.01,
             sublinear_tf=True,
             dtype=np.float32,
         )
