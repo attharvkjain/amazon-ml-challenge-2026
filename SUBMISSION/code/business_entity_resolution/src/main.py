@@ -137,24 +137,46 @@ def run_train():
         y_val = generate_labels(val_pairs, data['val_gt'])
         joblib.dump((X_val, y_val), val_feat_path)
 
-    # ── 5. Train model ────────────────────────────────────────────────────
-    print("\n" + "="*60)
-    print("STAGE 5: Training LightGBM")
-    print("="*60)
-
+    model_cache_path = os.path.join(CACHE_DIR, 'model_cache.pkl')
     matcher = EntityMatcher()
-    matcher.train(X_train, y_train, X_val, y_val, feature_names=FEATURE_NAMES)
 
-    # ── 6. Threshold tuning on val set ────────────────────────────────────
-    print("\n" + "="*60)
-    print("STAGE 6: Threshold tuning")
-    print("="*60)
+    if os.path.exists(model_cache_path):
+        print("\n[cache] Loading trained model and threshold from cache...")
+        model_data = joblib.load(model_cache_path)
+        # Assuming matcher has a load_model method, or we can just load the internal model
+        # For simplicity since matcher.save() exists but saves to OUTPUT_DIR, let's just use joblib
+        matcher = model_data['matcher']
+        best_threshold = model_data['best_threshold']
+        best_f05 = model_data['best_f05']
+        val_probs = model_data['val_probs']
+        val_s1_ids = model_data['val_s1_ids']
+    else:
+        # ── 5. Train model ────────────────────────────────────────────────────
+        print("\n" + "="*60)
+        print("STAGE 5: Training LightGBM")
+        print("="*60)
 
-    val_probs = matcher.predict_proba(X_val)
-    val_s1_ids = set(data['val_s1']['entity_id'])
-    best_threshold, best_f05 = sweep_threshold(
-        val_pairs, val_probs, data['val_gt'], all_s1_ids=val_s1_ids
-    )
+        matcher.train(X_train, y_train, X_val, y_val, feature_names=FEATURE_NAMES)
+
+        # ── 6. Threshold tuning on val set ────────────────────────────────────
+        print("\n" + "="*60)
+        print("STAGE 6: Threshold tuning")
+        print("="*60)
+
+        val_probs = matcher.predict_proba(X_val)
+        val_s1_ids = set(data['val_s1']['entity_id'])
+        best_threshold, best_f05 = sweep_threshold(
+            val_pairs, val_probs, data['val_gt'], all_s1_ids=val_s1_ids
+        )
+        
+        print("\n[cache] Saving trained model and threshold to cache...")
+        joblib.dump({
+            'matcher': matcher,
+            'best_threshold': best_threshold,
+            'best_f05': best_f05,
+            'val_probs': val_probs,
+            'val_s1_ids': val_s1_ids
+        }, model_cache_path)
 
     # ── 7. Diagnostics ────────────────────────────────────────────────────
     print("\n" + "="*60)
