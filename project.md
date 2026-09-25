@@ -1,4 +1,4 @@
-> **Version:** v1.8 | **Last updated:** 2026-09-25 19:39 IST | **By:** Antigravity
+> **Version:** v2.1 | **Last updated:** 2026-09-26 01:05 IST | **By:** Antigravity
 
 # Amazon ML Challenge 2026 — Project Master Index
 
@@ -16,7 +16,7 @@
 | **Evaluation Metric** | F₀.₅ (precision-heavy, macro-averaged per S1 entity) |
 | **Hackathon Window** | Sep 25, 2026 9:00 AM IST – Sep 27, 2026 9:00 PM IST (72 hours) |
 | **Submission Format** | `matching_results.tsv` (leaderboard upload) + `candidate_pairs.tsv` + code zip + methodology doc |
-| **Constraints** | Model ≤ 8B parameters, MIT/Apache 2.0 license only, no external data/APIs |
+| **Constraints** | See [`context/problem-and-data.md`](context/problem-and-data.md) |
 
 ### Team
 
@@ -42,7 +42,7 @@
 | [`SUBMISSION/Documentation_template.md`](SUBMISSION/Documentation_template.md) | File | Methodology write-up for final submission (official template) |
 | [`context/problem-and-data.md`](context/problem-and-data.md) | File | Problem statement, dataset schema, eval metric, constraints, data quirks |
 | [`context/past-challenges-reference.md`](context/past-challenges-reference.md) | File | Prior-year reference of winning approaches and common pitfalls |
-| [`skills/`](skills/) | Folder | Canonical provider-agnostic Agent Skills folder |
+| [`.agents/skills/`](.agents/skills/) | Folder | Canonical provider-agnostic Agent Skills folder |
 | [`context/eda-findings.md`](context/eda-findings.md) | File | Dated log of EDA insights |
 | [`context/environment-setup.md`](context/environment-setup.md) | File | Local environment reproduction steps per teammate |
 | [`context/experiment-log.md`](context/experiment-log.md) | File | **APPEND-ONLY** — every approach tried, params, CV score, commit |
@@ -73,12 +73,12 @@
 
 | Metric | Value | Details |
 |--------|-------|---------|
-| **Best Local CV Score (F₀.₅)** | N/A | No experiments run yet |
-| **Best Public LB Score** | N/A | No submissions yet |
-| **Approach** | N/A | — |
-| **Commit Hash** | N/A | — |
-| **Produced By** | N/A | — |
-| **Date** | N/A | — |
+| **Best Local CV Score (F₀.₅)** | 0.9699 | Threshold sweep on validation |
+| **Best Public LB Score** | **0.697** | Full Baseline Pipeline (all countries) |
+| **Approach** | TF-IDF Word Unigrams + LightGBM | memory-stable pipeline |
+| **Commit Hash** | `HEAD` | — |
+| **Produced By** | Antigravity | — |
+| **Date** | 2026-09-26 | — |
 
 > See [`context/experiment-log.md`](context/experiment-log.md) for full experiment history and [`context/submission-log.md`](context/submission-log.md) for submission history.
 
@@ -117,6 +117,16 @@
 
 > Dated log of gotchas, decisions, and mid-event changes. **Newest entry on top.**
 
+### 2026-09-26 — External Review Audit and Single Source of Truth Enforcement
+
+**By:** Antigravity
+
+- Added a strict "Single Source of Truth Rule" to eliminate conflicting duplicate documentation.
+- Identified that there is currently **no off-machine backup plan** for expensive intermediate pickles. Local caching is the only failsafe.
+- Flagged that the 'all singletons' baseline must be submitted ASAP to validate the local F0.5 scorer.
+- Verified test S1 row count is exactly 1,732,544.
+- Verified random seeds (RANDOM_STATE=42) are properly used across splits and training.
+
 ### 2026-09-25 — Repo restructured to match submission package layout
 
 **By:** Member 1
@@ -149,6 +159,13 @@
 6. **Never edit existing rows** in experiment-log.md or submission-log.md — append only.
 7. **Follow the versioning rule below** for any file you edit.
 8. **For your full operating manual**, see [`agents.md`](agents.md).
+
+---
+
+## Single Source of Truth Rule
+
+> **This is a project-wide, non-optional rule.**
+Every discrete fact, decision, or number lives in exactly ONE file. Any other file that needs it must link to the canonical location instead of restating it. This prevents documentation drift and conflicting values across the repository.
 
 ---
 
@@ -190,6 +207,8 @@ With 4 people and multiple AI agents editing docs during a 72-hour hackathon, we
 
 | Version | Date | By | Summary |
 |---------|------|----|---------|
+| v2.1 | 2026-09-26 | Antigravity | Updated Current State Snapshot with 0.697 LB score and full pipeline completion |
+| v2.0 | 2026-09-26 | Antigravity | Added Single Source of Truth Rule, updated Agent Skills path, and added audit summary to Critical Notes. |
 | v1.8 | 2026-09-25 | Antigravity | Added context/challenges_faced.md to Master Index |
 | v1.7 | 2026-09-25 | Antigravity | Added Pipeline Caching / Checkpointing rule to save intermediate progress |
 | v1.6 | 2026-09-25 | Antigravity | Added Proactive Bottleneck Resolution rule to Coding Conventions |

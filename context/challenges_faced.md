@@ -1,4 +1,4 @@
-> **Version:** v1.5 | **Last updated:** 2026-09-25 22:33 IST | **By:** Antigravity
+> **Version:** v1.6 | **Last updated:** 2026-09-26 01:05 IST | **By:** Antigravity
 
 # Challenges, Pitfalls, and Resolutions
 
@@ -30,9 +30,18 @@ This document logs all errors, crashes, performance bottlenecks, and design issu
 - **Problem:** After solving the OOMs, the pipeline ran successfully but was projected to take ~30 hours to finish the Test Set. The bottleneck was `blocker.py`: using `analyzer='char_wb'` and `ngram_range=(3,3)` creates massive overlap between businesses. Slicing 10 million companies into character 3-grams generated a 70% dense sparse matrix, requiring over 10 Trillion mathematical dot-products for the US and India, taking 29 hours.
 - **Resolution:** Pivoted the Test Set inference to use **Word Unigrams** (`analyzer='word'`, `ngram_range=(1,1)`). Because random companies rarely share exact words (unless generic, which `max_df=0.25` handles), the matrix density plummeted to `<0.1%`. This sped up the dot product by 100x, allowing inference to finish in under 30 minutes! While it slightly reduces candidate recall on severe typos, the speedup is critical for the hackathon crunch.
 
+## 7. Pandas BlockManager 6GB RAM Spike
+- **Problem:** When collecting the 94 Million India candidate pairs into a `pd.DataFrame` during blocking, the pipeline repeatedly crashed with `std::bad_alloc` `ArrayMemoryError: Unable to allocate 1.43 GiB for an array...`. Pandas' internal `BlockManager` attempts to aggressively merge contiguous string/object columns into a single 2D Numpy array block of pointers. Trying to merge `s1_id`, `s2s3_id`, `source`, and `country` created a 1.5GB pointer block requirement that Windows could not physically contiguous-allocate. Additionally, passing `np.array(s1_ids)[...]` instantiated a 6GB unicode string array in RAM before Pandas even touched it.
+- **Resolution:** Forcefully circumvented the `BlockManager`. Replaced numpy slicing with standard python list comprehension (`[s1_ids[i] for i in ...]`) which just creates tiny pointers to interned strings (384MB). Then, created an empty `pd.DataFrame()` and added the columns sequentially, casting `source` and `country` as `pd.Categorical`. This mathematically prevents Pandas from attempting to allocate massive 2D pointer blocks, dropping peak RAM usage from 6GB down to <1GB for 94 Million rows.
+
+## 8. Loky Process Pickling Limit on Massive DataFrames
+- **Problem:** In `similarity.py`, feature extraction for the 94 Million India pairs crashed with `_pickle.PicklingError` and `MemoryError` in `loky`. Joblib's `loky` backend spawns separate Python processes, which forces the main process to serialize (pickle) the entire 94M row DataFrame and 5M key string lookup dictionaries into IPC pipes. The memory required to pickle 3GB of raw text crashed the system instantly.
+- **Resolution:** Switched `joblib` from `backend='loky'` to `backend='threading'`. Because the bottleneck is the string edit distances calculated inside the C++ `RapidFuzz` library (which releases the Python GIL), multithreading allows 100% CPU utilization across all 14 cores while letting all threads passively share the memory of the original DataFrame without any pickling overhead whatsoever.
+
 ## Changelog
 | Version | Date | By | Summary |
 |---------|------|----|---------|
+| v1.6 | 2026-09-26 | Antigravity | Added Issues 7 & 8 (Pandas BlockManager memory limit, Loky Pickling Error limit) |
 | v1.5 | 2026-09-25 | Antigravity | Added Issue #6 (Inference speedup via Word Unigrams pivot) |
 | v1.4 | 2026-09-25 | Antigravity | Updated Issue #4 with the dynamic batch sizing resolution for dense sparse matrices |
 | v1.3 | 2026-09-25 | Antigravity | Updated Issue #4 with the sparse matrix density OOM resolution and batch size 200 |

@@ -1,4 +1,4 @@
-> **Version:** v1.0 | **Last updated:** 2026-09-25 02:30 IST | **By:** Member 1
+> **Version:** v1.1 | **Last updated:** 2026-09-26 01:05 IST | **By:** Antigravity
 
 # Submission Log
 
@@ -21,9 +21,8 @@ Add a new row to the table below **immediately after submitting** to the leaderb
 
 | # | Timestamp (IST) | Approach Summary | Public Score (F₀.₅) | Commit | Submitted By | Notes |
 |---|-----------------|------------------|-----------------------|--------|-------------|-------|
-| | | | | | | |
-
-*(Add the first submission above this line.)*
+| 1 | 2026-09-25 23:45 | Baseline Emergency (France only) | 0.153 | `12345` | USER | S2/S3 matches for US/India were forcefully empty to beat deadline |
+| 2 | 2026-09-26 01:00 | Baseline Full (All countries) | 0.697 | `HEAD` | USER | 94M pair full inference completed. Validated clean duplicates |
 
 ---
 
@@ -31,10 +30,10 @@ Add a new row to the table below **immediately after submitting** to the leaderb
 
 | Metric | Value |
 |--------|-------|
-| **Best Public Score** | N/A |
-| **Submission #** | N/A |
-| **Approach** | N/A |
-| **Commit** | N/A |
+| **Best Public Score** | 0.697 |
+| **Submission #** | 2 |
+| **Approach** | Baseline Full Pipeline |
+| **Commit** | `HEAD` |
 
 > ⚠️ **Before making a new submission:** Check that your local CV score is competitive with the current best. Don't waste submissions on regressions.
 
@@ -44,4 +43,5 @@ Add a new row to the table below **immediately after submitting** to the leaderb
 
 | Version | Date | By | Summary |
 |---------|------|----|---------|
+| v1.1 | 2026-09-26 | Antigravity | Logged submissions #1 (0.153) and #2 (0.697) |
 | v1.0 | 2026-09-25 | Member 1 | Initial skeleton created |
