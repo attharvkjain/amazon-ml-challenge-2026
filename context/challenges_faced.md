@@ -1,4 +1,4 @@
-> **Version:** v1.7 | **Last updated:** 2026-09-26 02:07 IST | **By:** Codex
+> **Version:** v1.8 | **Last updated:** 2026-09-26 03:10 IST | **By:** Antigravity
 
 # Challenges, Pitfalls, and Resolutions
 
@@ -38,9 +38,14 @@ This document logs all errors, crashes, performance bottlenecks, and design issu
 - **Problem:** In `similarity.py`, feature extraction for the 94 Million India pairs crashed with `_pickle.PicklingError` and `MemoryError` in `loky`. Joblib's `loky` backend spawns separate Python processes, which forces the main process to serialize (pickle) the entire 94M row DataFrame and 5M key string lookup dictionaries into IPC pipes. The memory required to pickle 3GB of raw text crashed the system instantly.
 - **Resolution:** Switched `joblib` from `backend='loky'` to `backend='threading'`. Because the bottleneck is the string edit distances calculated inside the C++ `RapidFuzz` library (which releases the Python GIL), multithreading allows 100% CPU utilization across all 14 cores while letting all threads passively share the memory of the original DataFrame without any pickling overhead whatsoever.
 
+## 9. GitHub 100MB File Size Limit Crash
+- **Problem:** When attempting to `git push` the final branch to GitHub, the remote server rejected the push (`pre-receive hook declined: GH001: Large files detected`) because a 118MB `submission_002_matching_results.tsv` file had been committed to the history by an automated reconciliation agent.
+- **Resolution:** Performed a `git reset --soft` to rewind the local branch history without losing any file modifications. Manually unstaged the massive `.tsv` file, added it to `.gitignore`, and squashed all the valid changes into a single new commit, completely removing the large file from the Git tree and successfully pushing to the remote.
+
 ## Changelog
 | Version | Date | By | Summary |
 |---------|------|----|---------|
+| v1.7 | 2026-09-26 | Antigravity | Added Issue 9 (GitHub 100MB File Size Limit Crash) |
 | v1.7 | 2026-09-26 | Codex | Clarified the historical max_df setting versus the current baseline value. |
 | v1.6 | 2026-09-26 | Antigravity | Added Issues 7 & 8 (Pandas BlockManager memory limit, Loky Pickling Error limit) |
 | v1.5 | 2026-09-25 | Antigravity | Added Issue #6 (Inference speedup via Word Unigrams pivot) |
