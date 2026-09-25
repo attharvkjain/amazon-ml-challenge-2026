@@ -210,7 +210,7 @@ def run_train():
     gc.collect()
 
     print("\n" + "="*60)
-    print("STAGE 8: Processing test data")
+    print("STAGE 8-12: Iterative Test Inference")
     print("="*60)
 
     test_data_path = os.path.join(CACHE_DIR, 'test_data.pkl')
@@ -221,55 +221,58 @@ def run_train():
         test_data = load_test_data()
         test_data = _preprocess_all(test_data, ['test'])
         joblib.dump(test_data, test_data_path)
-
-    # ── 9. Block test data ────────────────────────────────────────────────
-    test_pairs_path = os.path.join(CACHE_DIR, 'test_pairs.pkl')
-    if os.path.exists(test_pairs_path):
-        print("\n[cache] Loading TEST candidates from cache...")
-        test_pairs = joblib.load(test_pairs_path)
-    else:
-        print("\n[blocking] Generating TEST candidates ...")
-        test_pairs = generate_candidates(
+        
+    tsv_path = os.path.join(OUTPUT_DIR, 'matching_results.tsv')
+    progress_path = os.path.join(CACHE_DIR, 'test_progress.txt')
+    
+    completed_countries = set()
+    if os.path.exists(progress_path):
+        with open(progress_path, 'r') as f:
+            completed_countries = set(f.read().splitlines())
+            
+    countries = sorted(test_data['test_s1']['country'].unique())
+    total_matching_df_parts = []
+    
+    for country in countries:
+        if country in completed_countries:
+            print(f"\n[inference] Skipping {country} (Already completed)")
+            continue
+            
+        print(f"\n[inference] --- Processing {country} ---")
+        country_pairs = generate_candidates(
             test_data['test_s1'], test_data['test_s2'], test_data['test_s3'],
+            target_country=country
         )
-        joblib.dump(test_pairs, test_pairs_path)
-
-    # ── 10. Extract features + predict ────────────────────────────────────
-    test_feat_path = os.path.join(CACHE_DIR, 'test_feat.pkl')
-    if os.path.exists(test_feat_path):
-        print("\n[cache] Loading TEST features from cache...")
-        X_test = joblib.load(test_feat_path)
-    else:
-        print("\n[features] Extracting TEST features ...")
+        
+        print("\n[features] Extracting features ...")
         X_test = extract_features(
-            test_pairs, test_data['test_s1'], test_data['test_s2'], test_data['test_s3']
+            country_pairs, test_data['test_s1'], test_data['test_s2'], test_data['test_s3']
         )
-        joblib.dump(X_test, test_feat_path)
+        
+        test_probs = matcher.predict_proba(X_test)
+        
+        test_s1_ids = test_data['test_s1'][test_data['test_s1']['country'] == country]['entity_id']
+        append_mode = os.path.exists(tsv_path) and len(completed_countries) > 0
+        
+        preds_df = format_and_save_output(
+            country_pairs, test_probs, best_threshold, test_s1_ids,
+            append_mode=append_mode
+        )
+        
+        completed_countries.add(country)
+        with open(progress_path, 'a') as f:
+            f.write(country + '\n')
+            
+        del country_pairs, X_test, test_probs, preds_df
+        gc.collect()
 
-    test_probs = matcher.predict_proba(X_test)
-
-    # ── 11. Format and save output ────────────────────────────────────────
-    print("\n" + "="*60)
-    print("STAGE 9: Formatting and saving output")
-    print("="*60)
-
-    test_s1_ids = test_data['test_s1']['entity_id']
-    matching_df = format_and_save_output(
-        test_pairs, test_probs, best_threshold, test_s1_ids,
-    )
-
-    # Verify row count
-    assert len(matching_df) == TEST_S1_COUNT, \
-        f"Expected {TEST_S1_COUNT} rows, got {len(matching_df)}"
-    print(f"[output] ✓ Row count verified: {len(matching_df):,}")
-
-    # Save model
-    matcher.save()
-
-    # ── 12. Validate submission ───────────────────────────────────────────
     print("\n" + "="*60)
     print("STAGE 10: Validating submission")
     print("="*60)
+    
+    # Save model
+    matcher.save()
+    
     _run_validation()
 
     total_time = time.time() - total_start

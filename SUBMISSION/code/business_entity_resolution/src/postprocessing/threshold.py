@@ -142,6 +142,7 @@ def format_and_save_output(
     threshold: float,
     all_s1_ids: list[str] | set[str] | pd.Series,
     output_dir: str | os.PathLike | None = None,
+    append_mode: bool = False,
 ) -> pd.DataFrame:
     """
     Format and save final output files.
@@ -177,7 +178,9 @@ def format_and_save_output(
 
     # Save matching_results.tsv
     matching_path = os.path.join(output_dir, 'matching_results.tsv')
-    matching_df.to_csv(matching_path, sep='\t', index=False)
+    write_mode = 'a' if append_mode else 'w'
+    write_header = not append_mode
+    matching_df.to_csv(matching_path, sep='\t', index=False, mode=write_mode, header=write_header)
 
     n_matched = sum(1 for _, r in matching_df.iterrows() if r['matched_entity_ids'])
     n_singleton = len(matching_df) - n_matched
@@ -194,9 +197,12 @@ def format_and_save_output(
         all_s1_frame = pd.DataFrame({'source1_entity_id': all_s1_list})
         cand_result = all_s1_frame.merge(cand_grouped, on='source1_entity_id', how='left')
         cand_result['candidate_entity_ids'] = cand_result['candidate_entity_ids'].fillna('')
+    else:
+        # If no pairs at all, just output empty candidates
+        cand_result = pd.DataFrame({'source1_entity_id': all_s1_list, 'candidate_entity_ids': ''})
 
-        cand_path = os.path.join(output_dir, 'candidate_pairs.tsv')
-        cand_result.to_csv(cand_path, sep='\t', index=False)
-        print(f"[output] candidate_pairs.tsv: {len(cand_result):,} rows -> {cand_path}")
+    cand_path = os.path.join(output_dir, 'candidate_pairs.tsv')
+    cand_result.to_csv(cand_path, sep='\t', index=False, mode=write_mode, header=write_header)
+    print(f"[output] candidate_pairs.tsv: {len(cand_result):,} rows -> {cand_path}")
 
     return matching_df

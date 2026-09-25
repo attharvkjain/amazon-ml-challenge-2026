@@ -91,12 +91,17 @@ def generate_candidates(
     s3: pd.DataFrame,
     top_k: int | None = None,
     save_path: str | os.PathLike | None = None,
+    target_country: str | None = None,
 ) -> pd.DataFrame:
     """Generate candidate pairs using country-first partitioning + TF-IDF blocking."""
     if top_k is None:
         top_k = BLOCKING_TOP_K
 
-    countries = sorted(s1['country'].unique())
+    if target_country:
+        countries = [target_country]
+    else:
+        countries = sorted(s1['country'].unique())
+        
     print(f"[blocker] Countries: {countries}")
     all_pairs = []
 
