@@ -26,7 +26,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from config import (
     SAMPLE_FRAC, OUTPUT_DIR, DIAGNOSTICS_DIR, VALIDATE_SCRIPT,
-    TEST_DIR, TEST_S1_COUNT,
+    TEST_DIR, TEST_S1_COUNT, THRESHOLD_PATH,
 )
 from preprocessing.load import load_train_data, load_test_data
 from preprocessing.clean import preprocess_dataframe
@@ -69,13 +69,14 @@ def run_train():
     11. Generate diagnostics
     """
     total_start = time.time()
+    sample_key = f"{SAMPLE_FRAC:g}"
 
     # ── 1. Load & Preprocess Data (Cached) ───────────────────────────────
     print("\n" + "="*60)
     print("STAGE 1 & 2: Loading & Preprocessing")
     print("="*60)
     
-    train_data_path = os.path.join(CACHE_DIR, 'train_data.pkl')
+    train_data_path = os.path.join(CACHE_DIR, f'train_data_{sample_key}.pkl')
     if os.path.exists(train_data_path):
         print("[cache] Loading preprocessed train/val data from cache...")
         data = joblib.load(train_data_path)
@@ -90,8 +91,8 @@ def run_train():
     print("STAGE 3: Blocking (TF-IDF candidate generation)")
     print("="*60)
 
-    train_pairs_path = os.path.join(CACHE_DIR, 'train_pairs.pkl')
-    val_pairs_path = os.path.join(CACHE_DIR, 'val_pairs.pkl')
+    train_pairs_path = os.path.join(CACHE_DIR, f'train_pairs_{sample_key}.pkl')
+    val_pairs_path = os.path.join(CACHE_DIR, f'val_pairs_{sample_key}.pkl')
 
     if os.path.exists(train_pairs_path):
         print("\n[cache] Loading TRAIN candidates from cache...")
@@ -116,8 +117,8 @@ def run_train():
     print("STAGE 4: Feature extraction (Cached)")
     print("="*60)
 
-    train_feat_path = os.path.join(CACHE_DIR, 'train_feat.pkl')
-    val_feat_path = os.path.join(CACHE_DIR, 'val_feat.pkl')
+    train_feat_path = os.path.join(CACHE_DIR, f'train_feat_{sample_key}.pkl')
+    val_feat_path = os.path.join(CACHE_DIR, f'val_feat_{sample_key}.pkl')
 
     if os.path.exists(train_feat_path):
         print("\n[cache] Loading TRAIN features from cache...")
@@ -137,7 +138,7 @@ def run_train():
         y_val = generate_labels(val_pairs, data['val_gt'])
         joblib.dump((X_val, y_val), val_feat_path)
 
-    model_cache_path = os.path.join(CACHE_DIR, 'model_cache.pkl')
+    model_cache_path = os.path.join(CACHE_DIR, f'model_cache_{sample_key}.pkl')
     matcher = EntityMatcher()
 
     if os.path.exists(model_cache_path):
@@ -177,6 +178,9 @@ def run_train():
             'val_probs': val_probs,
             'val_s1_ids': val_s1_ids
         }, model_cache_path)
+
+    with open(THRESHOLD_PATH, 'w', encoding='utf-8') as threshold_file:
+        threshold_file.write(f"{best_threshold:.8f}\n")
 
     # ── 7. Diagnostics ────────────────────────────────────────────────────
     print("\n" + "="*60)
@@ -223,7 +227,10 @@ def run_train():
         joblib.dump(test_data, test_data_path)
         
     tsv_path = os.path.join(OUTPUT_DIR, 'matching_results.tsv')
-    progress_path = os.path.join(CACHE_DIR, 'test_progress.txt')
+    progress_path = os.path.join(
+        CACHE_DIR,
+        f'test_progress_sample_{sample_key}_threshold_{best_threshold:.3f}.txt',
+    )
     
     completed_countries = set()
     if os.path.exists(progress_path):
@@ -315,9 +322,11 @@ def run_predict():
     )
     test_probs = matcher.predict_proba(X_test)
 
-    # Use default threshold (0.5) since we don't have val set in predict mode
-    # A better approach would be to save the threshold during training
-    threshold = 0.5
+    if not THRESHOLD_PATH.exists():
+        raise FileNotFoundError(
+            f"Tuned threshold not found at {THRESHOLD_PATH}; run train mode first."
+        )
+    threshold = float(THRESHOLD_PATH.read_text(encoding='utf-8').strip())
     test_s1_ids = test_data['test_s1']['entity_id']
     matching_df = format_and_save_output(
         test_pairs, test_probs, threshold, test_s1_ids,

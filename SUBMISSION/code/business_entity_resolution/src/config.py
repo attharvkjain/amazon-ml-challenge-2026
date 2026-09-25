@@ -6,22 +6,23 @@ from pathlib import Path
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent.parent
-DATA_DIR = PROJECT_ROOT / "Data" / "6ab10eb3b23ba_student_resource" / "student_resource" / "dataset"
+DATA_DIR = PROJECT_ROOT / "data" / "6ab10eb3b23ba_student_resource" / "student_resource" / "dataset"
 TRAIN_DIR = DATA_DIR / "train"
 TEST_DIR = DATA_DIR / "test"
 OUTPUT_DIR = PROJECT_ROOT / "SUBMISSION" / "output"
 DIAGNOSTICS_DIR = PROJECT_ROOT / "notebooks" / "diagnostics"
 VALIDATE_SCRIPT = (
-    PROJECT_ROOT / "Data" / "6ab10eb3b23ba_student_resource"
+    PROJECT_ROOT / "data" / "6ab10eb3b23ba_student_resource"
     / "student_resource" / "utils" / "validate_submission.py"
 )
+THRESHOLD_PATH = OUTPUT_DIR / "model_threshold.txt"
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(DIAGNOSTICS_DIR, exist_ok=True)
 
 # ── Development ────────────────────────────────────────────────────────────────
 RANDOM_STATE = 42
-SAMPLE_FRAC = 0.1          # Set to 1.0 for full run
+SAMPLE_FRAC = 1.0          # Lower this for sampled development runs
 VAL_FRAC = 0.2             # 80/20 train/val split on S1 entities
 
 # ── Blocking ───────────────────────────────────────────────────────────────────

@@ -10,3 +10,8 @@ __pycache__/
 # macOS/Windows
 .DS_Store
 Thumbs.db
+
+# Generated cache and audit output are local only
+code/business_entity_resolution/cache/
+output/candidate_pairs.tsv
+output/model_threshold.txt
