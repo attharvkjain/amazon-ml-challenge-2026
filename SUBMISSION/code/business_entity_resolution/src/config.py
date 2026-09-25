@@ -26,7 +26,7 @@ VAL_FRAC = 0.2             # 80/20 train/val split on S1 entities
 
 # ── Blocking ───────────────────────────────────────────────────────────────────
 BLOCKING_TOP_K = 20
-TFIDF_NGRAM_RANGE = (3, 3)
+TFIDF_NGRAM_RANGE = (1, 1)  # Changed from (3,3) char_wb to (1,1) word unigrams for speed
 TFIDF_MAX_FEATURES = 100_000
 
 # ── Model (LightGBM) ──────────────────────────────────────────────────────────

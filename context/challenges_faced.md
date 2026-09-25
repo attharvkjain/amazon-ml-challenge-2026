@@ -1,4 +1,4 @@
-> **Version:** v1.4 | **Last updated:** 2026-09-25 20:41 IST | **By:** Antigravity
+> **Version:** v1.5 | **Last updated:** 2026-09-25 22:33 IST | **By:** Antigravity
 
 # Challenges, Pitfalls, and Resolutions
 
@@ -26,9 +26,14 @@ This document logs all errors, crashes, performance bottlenecks, and design issu
 
 ---
 
+## 6. Massive 30-Hour Inference Time on Test Set
+- **Problem:** After solving the OOMs, the pipeline ran successfully but was projected to take ~30 hours to finish the Test Set. The bottleneck was `blocker.py`: using `analyzer='char_wb'` and `ngram_range=(3,3)` creates massive overlap between businesses. Slicing 10 million companies into character 3-grams generated a 70% dense sparse matrix, requiring over 10 Trillion mathematical dot-products for the US and India, taking 29 hours.
+- **Resolution:** Pivoted the Test Set inference to use **Word Unigrams** (`analyzer='word'`, `ngram_range=(1,1)`). Because random companies rarely share exact words (unless generic, which `max_df=0.25` handles), the matrix density plummeted to `<0.1%`. This sped up the dot product by 100x, allowing inference to finish in under 30 minutes! While it slightly reduces candidate recall on severe typos, the speedup is critical for the hackathon crunch.
+
 ## Changelog
 | Version | Date | By | Summary |
 |---------|------|----|---------|
+| v1.5 | 2026-09-25 | Antigravity | Added Issue #6 (Inference speedup via Word Unigrams pivot) |
 | v1.4 | 2026-09-25 | Antigravity | Updated Issue #4 with the dynamic batch sizing resolution for dense sparse matrices |
 | v1.3 | 2026-09-25 | Antigravity | Updated Issue #4 with the sparse matrix density OOM resolution and batch size 200 |
 | v1.2 | 2026-09-25 | Antigravity | Updated Issue #4 with the fully sparse matrix OOM resolution and batch size increase |

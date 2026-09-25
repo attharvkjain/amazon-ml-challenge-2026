@@ -118,8 +118,8 @@ def generate_candidates(
 
         print(f"  Fitting TF-IDF vectorizer ...")
         vectorizer = TfidfVectorizer(
-            analyzer='char_wb',
-            ngram_range=TFIDF_NGRAM_RANGE,
+            analyzer='word',
+            ngram_range=(1, 1),
             max_features=TFIDF_MAX_FEATURES,
             max_df=0.25,
             sublinear_tf=True,
