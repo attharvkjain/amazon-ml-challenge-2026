@@ -196,7 +196,19 @@ def run_train():
         blocking_recall=val_blocking_recall,
     )
 
-    # ── 8. Load and preprocess test data ──────────────────────────────────
+    # ── 8. Free memory before test data ────────────────────────────────────
+    print("\n[memory] Freeing training data from memory...")
+    if 'train_pairs' in locals(): del train_pairs
+    if 'val_pairs' in locals(): del val_pairs
+    if 'X_train' in locals(): del X_train
+    if 'X_val' in locals(): del X_val
+    if 'data' in locals():
+        for key in list(data.keys()):
+            if key.startswith('train_') or key.startswith('val_'):
+                del data[key]
+    import gc
+    gc.collect()
+
     print("\n" + "="*60)
     print("STAGE 8: Processing test data")
     print("="*60)
