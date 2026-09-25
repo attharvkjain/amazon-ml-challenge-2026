@@ -71,8 +71,8 @@ def compute_pair_features(name1: str, name2: str, addr1: str, addr2: str, source
     ]
 
 
-def _extract_chunk(chunk_df: pd.DataFrame, s1_lookup: dict, s2s3_lookup: dict) -> list[list[float]]:
-    """Process a chunk of pairs to extract features."""
+def _extract_chunk(chunk_df: pd.DataFrame, s1_lookup: dict, s2s3_lookup: dict) -> np.ndarray:
+    """Process a chunk of pairs to extract features. Returns float32 numpy array for fast IPC."""
     features = []
     for row in chunk_df.itertuples(index=False):
         s1_data = s1_lookup.get(row.s1_id, ('', ''))
@@ -84,7 +84,7 @@ def _extract_chunk(chunk_df: pd.DataFrame, s1_lookup: dict, s2s3_lookup: dict) -
             row.source,
         )
         features.append(feat)
-    return features
+    return np.array(features, dtype=np.float32)
 
 
 def extract_features(
@@ -98,14 +98,14 @@ def extract_features(
     print(f"[features] Extracting features for {len(pairs_df):,} pairs on {n_jobs} threads ...")
 
     s1_lookup = {}
-    for _, row in s1_df.iterrows():
-        s1_lookup[row['entity_id']] = (row.get('clean_name', ''), row.get('clean_address', ''))
+    for row in s1_df.itertuples(index=False):
+        s1_lookup[row.entity_id] = (getattr(row, 'clean_name', ''), getattr(row, 'clean_address', ''))
 
     s2s3_lookup = {}
-    for _, row in s2_df.iterrows():
-        s2s3_lookup[row['entity_id']] = (row.get('clean_name', ''), row.get('clean_address', ''))
-    for _, row in s3_df.iterrows():
-        s2s3_lookup[row['entity_id']] = (row.get('clean_name', ''), row.get('clean_address', ''))
+    for row in s2_df.itertuples(index=False):
+        s2s3_lookup[row.entity_id] = (getattr(row, 'clean_name', ''), getattr(row, 'clean_address', ''))
+    for row in s3_df.itertuples(index=False):
+        s2s3_lookup[row.entity_id] = (getattr(row, 'clean_name', ''), getattr(row, 'clean_address', ''))
 
     if len(pairs_df) == 0:
         return np.array([], dtype=np.float32)
@@ -118,20 +118,14 @@ def extract_features(
         delayed(_extract_chunk)(chunk, s1_lookup, s2s3_lookup) for chunk in chunks
     )
 
-    features = []
-    for r in results_list:
-        features.extend(r)
-
-    return np.array(features, dtype=np.float32)
+    return np.vstack(results_list)
 
 
 def generate_labels(pairs_df: pd.DataFrame, ground_truth: dict[str, set[str]]) -> np.ndarray:
     labels = []
-    for _, pair in pairs_df.iterrows():
-        s1_id = pair['s1_id']
-        s2s3_id = pair['s2s3_id']
-        gt_set = ground_truth.get(s1_id, set())
-        labels.append(1 if s2s3_id in gt_set else 0)
+    for row in pairs_df.itertuples(index=False):
+        gt_set = ground_truth.get(row.s1_id, set())
+        labels.append(1 if row.s2s3_id in gt_set else 0)
 
     labels = np.array(labels, dtype=np.int32)
     pos = labels.sum()

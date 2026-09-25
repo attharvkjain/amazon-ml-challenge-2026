@@ -1,4 +1,4 @@
-> **Version:** v1.0 | **Last updated:** 2026-09-25 19:39 IST | **By:** Antigravity
+> **Version:** v1.1 | **Last updated:** 2026-09-25 19:52 IST | **By:** Antigravity
 
 # Challenges, Pitfalls, and Resolutions
 
@@ -20,9 +20,14 @@ This document logs all errors, crashes, performance bottlenecks, and design issu
 - **Problem:** In `blocker.py`, computing sparse TF-IDF cosine similarities on 14 concurrent threads resulted in massive memory spikes (>18GB), causing the system to lock up.
 - **Resolution:** Reduced the `batch_size` in the sparse matrix multiplication loop from `5000` to `500`.
 
+## 5. IPC Deserialization Bottleneck
+- **Problem:** During multithreaded feature extraction (Stage 4 and Stage 10), returning raw Python lists of floats from the worker processes back to the main process created a massive Inter-Process Communication (IPC) serialization overhead. Transferring 3GB of lists took several minutes on a single CPU thread on the main process while the rest of the cores idled.
+- **Resolution:** Modified `_extract_chunk` in `similarity.py` to immediately convert the extracted features into a C-level `np.ndarray` of `np.float32` *before* returning them across the IPC pipe, and used `np.vstack()` on the master thread. This allows zero-copy memory mapping, completely eliminating the IPC bottleneck.
+
 ---
 
 ## Changelog
 | Version | Date | By | Summary |
 |---------|------|----|---------|
+| v1.1 | 2026-09-25 | Antigravity | Added IPC Deserialization Bottleneck resolution |
 | v1.0 | 2026-09-25 | Antigravity | Initial creation and backfilling of issues 1-4 |
