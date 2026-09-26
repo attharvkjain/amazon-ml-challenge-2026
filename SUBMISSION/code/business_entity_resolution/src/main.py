@@ -34,6 +34,7 @@ from preprocessing.transliterate import apply_transliteration
 from blocking.blocker import generate_candidates, compute_blocking_recall
 from features.similarity import extract_features, generate_labels, FEATURE_NAMES
 from models.matcher import EntityMatcher
+# from models.reranker import TwoStageReranker
 from postprocessing.threshold import sweep_threshold, format_and_save_output
 from evaluation.metrics import compute_diagnostics, f05_macro
 
@@ -53,7 +54,7 @@ def _preprocess_all(data: dict, splits: list[str]) -> dict:
     return data
 
 
-def run_train():
+def run_train(skip_inference=False, loco_country=None):
     """
     Full training pipeline:
     1. Load train data with train/val split
@@ -69,28 +70,34 @@ def run_train():
     11. Generate diagnostics
     """
     total_start = time.time()
+    timing_dict = {}
     sample_key = f"{SAMPLE_FRAC:g}"
+    if loco_country:
+        sample_key += f"_loco_{loco_country}"
 
     # ── 1. Load & Preprocess Data (Cached) ───────────────────────────────
     print("\n" + "="*60)
     print("STAGE 1 & 2: Loading & Preprocessing")
     print("="*60)
     
+    t0_stage1 = time.time()
     train_data_path = os.path.join(CACHE_DIR, f'train_data_{sample_key}.pkl')
     if os.path.exists(train_data_path):
         print("[cache] Loading preprocessed train/val data from cache...")
         data = joblib.load(train_data_path)
     else:
-        data = load_train_data(sample_frac=SAMPLE_FRAC)
+        data = load_train_data(sample_frac=SAMPLE_FRAC, loco_country=loco_country)
         data = _preprocess_all(data, ['train', 'val'])
         print("[cache] Saving preprocessed train/val data to cache...")
         joblib.dump(data, train_data_path)
+    timing_dict['Stage 1 & 2: Preprocessing'] = time.time() - t0_stage1
 
     # ── 3. Blocking ───────────────────────────────────────────────────────
     print("\n" + "="*60)
     print("STAGE 3: Blocking (TF-IDF candidate generation)")
     print("="*60)
-
+    
+    t0_stage3 = time.time()
     train_pairs_path = os.path.join(CACHE_DIR, f'train_pairs_{sample_key}.pkl')
     val_pairs_path = os.path.join(CACHE_DIR, f'val_pairs_{sample_key}.pkl')
 
@@ -99,7 +106,7 @@ def run_train():
         train_pairs, train_blocking_recall = joblib.load(train_pairs_path)
     else:
         print("\n[blocking] Generating TRAIN candidates ...")
-        train_pairs = generate_candidates(data['train_s1'], data['train_s2'], data['train_s3'])
+        train_pairs = generate_candidates(data['train_s1'], data['train_s2'], data['train_s3'], cache_prefix='train')
         train_blocking_recall = compute_blocking_recall(train_pairs, data['train_gt'])
         joblib.dump((train_pairs, train_blocking_recall), train_pairs_path)
 
@@ -108,21 +115,23 @@ def run_train():
         val_pairs, val_blocking_recall = joblib.load(val_pairs_path)
     else:
         print("\n[blocking] Generating VAL candidates ...")
-        val_pairs = generate_candidates(data['val_s1'], data['val_s2'], data['val_s3'])
+        val_pairs = generate_candidates(data['val_s1'], data['val_s2'], data['val_s3'], cache_prefix='val')
         val_blocking_recall = compute_blocking_recall(val_pairs, data['val_gt'])
         joblib.dump((val_pairs, val_blocking_recall), val_pairs_path)
+    timing_dict['Stage 3: Blocking'] = time.time() - t0_stage3
 
     # ── 4. Feature extraction ─────────────────────────────────────────────
     print("\n" + "="*60)
     print("STAGE 4: Feature extraction (Cached)")
     print("="*60)
-
+    
+    t0_stage4 = time.time()
     train_feat_path = os.path.join(CACHE_DIR, f'train_feat_{sample_key}.pkl')
     val_feat_path = os.path.join(CACHE_DIR, f'val_feat_{sample_key}.pkl')
 
     if os.path.exists(train_feat_path):
         print("\n[cache] Loading TRAIN features from cache...")
-        X_train, y_train = joblib.load(train_feat_path)
+        X_train, y_train = joblib.load(train_feat_path, mmap_mode='r')
     else:
         print("\n[features] Extracting TRAIN features ...")
         X_train = extract_features(train_pairs, data['train_s1'], data['train_s2'], data['train_s3'])
@@ -131,44 +140,65 @@ def run_train():
 
     if os.path.exists(val_feat_path):
         print("\n[cache] Loading VAL features from cache...")
-        X_val, y_val = joblib.load(val_feat_path)
+        X_val, y_val = joblib.load(val_feat_path, mmap_mode='r')
     else:
         print("\n[features] Extracting VAL features ...")
         X_val = extract_features(val_pairs, data['val_s1'], data['val_s2'], data['val_s3'])
         y_val = generate_labels(val_pairs, data['val_gt'])
         joblib.dump((X_val, y_val), val_feat_path)
+    timing_dict['Stage 4: Feature Extraction'] = time.time() - t0_stage4
 
     model_cache_path = os.path.join(CACHE_DIR, f'model_cache_{sample_key}.pkl')
     matcher = EntityMatcher()
 
     if os.path.exists(model_cache_path):
         print("\n[cache] Loading trained model and threshold from cache...")
+        t0_stage5 = time.time()
         model_data = joblib.load(model_cache_path)
-        # Assuming matcher has a load_model method, or we can just load the internal model
-        # For simplicity since matcher.save() exists but saves to OUTPUT_DIR, let's just use joblib
         matcher = model_data['matcher']
         best_threshold = model_data['best_threshold']
         best_f05 = model_data['best_f05']
         val_probs = model_data['val_probs']
         val_s1_ids = model_data['val_s1_ids']
+        timing_dict['Stage 5 & 6: Training & Tuning (Cached)'] = time.time() - t0_stage5
     else:
         # ── 5. Train model ────────────────────────────────────────────────────
         print("\n" + "="*60)
         print("STAGE 5: Training LightGBM")
         print("="*60)
+        
+        t0_stage5 = time.time()
+        # Free massive memory blocks before LightGBM copies the data
+        print("\n[memory] Freeing 7GB of cached DataFrames to make room for LightGBM internal datasets...")
+        if 'train_pairs' in locals():
+            del train_pairs
+        if 'data' in locals():
+            del data
+        import gc; gc.collect()
 
         matcher.train(X_train, y_train, X_val, y_val, feature_names=FEATURE_NAMES)
+        timing_dict['Stage 5: Training LightGBM'] = time.time() - t0_stage5
 
         # ── 6. Threshold tuning on val set ────────────────────────────────────
         print("\n" + "="*60)
         print("STAGE 6: Threshold tuning")
         print("="*60)
-
+        
+        t0_stage6 = time.time()
         val_probs = matcher.predict_proba(X_val)
+        
+        # Reload data if we deleted it to save memory for LightGBM
+        if 'data' not in locals():
+            print("\n[memory] Reloading data from cache for reranker...")
+            data = joblib.load(train_data_path)
+
+        # (Reranker was removed in V4 - bypassing straight to Threshold)
+        
         val_s1_ids = set(data['val_s1']['entity_id'])
         best_threshold, best_f05 = sweep_threshold(
             val_pairs, val_probs, data['val_gt'], all_s1_ids=val_s1_ids
         )
+        timing_dict['Stage 6: Threshold Tuning'] = time.time() - t0_stage6
         
         print("\n[cache] Saving trained model and threshold to cache...")
         joblib.dump({
@@ -180,7 +210,11 @@ def run_train():
         }, model_cache_path)
 
     with open(THRESHOLD_PATH, 'w', encoding='utf-8') as threshold_file:
-        threshold_file.write(f"{best_threshold:.8f}\n")
+        import json
+        if isinstance(best_threshold, dict):
+            json.dump(best_threshold, threshold_file)
+        else:
+            threshold_file.write(f"{best_threshold:.8f}\n")
 
     # ── 7. Diagnostics ────────────────────────────────────────────────────
     print("\n" + "="*60)
@@ -213,10 +247,17 @@ def run_train():
     import gc
     gc.collect()
 
+    if skip_inference:
+        print("\n" + "="*60)
+        print("STAGE 8-12: SKIPPING TEST INFERENCE AS REQUESTED")
+        print("="*60)
+        return
+
     print("\n" + "="*60)
     print("STAGE 8-12: Iterative Test Inference")
     print("="*60)
-
+    
+    t0_stage8 = time.time()
     test_data_path = os.path.join(CACHE_DIR, 'test_data.pkl')
     if os.path.exists(test_data_path):
         print("[cache] Loading preprocessed test data from cache...")
@@ -248,7 +289,8 @@ def run_train():
         print(f"\n[inference] --- Processing {country} ---")
         country_pairs = generate_candidates(
             test_data['test_s1'], test_data['test_s2'], test_data['test_s3'],
-            target_country=country
+            target_country=country,
+            cache_prefix='test'
         )
         
         print("\n[features] Extracting features ...")
@@ -257,6 +299,9 @@ def run_train():
         )
         
         test_probs = matcher.predict_proba(X_test)
+        
+        # (Reranker bypassed - V4 Ensemble)
+        # --------------------------
         
         test_s1_ids = test_data['test_s1'][test_data['test_s1']['country'] == country]['entity_id']
         append_mode = os.path.exists(tsv_path) and len(completed_countries) > 0
@@ -272,6 +317,7 @@ def run_train():
             
         del country_pairs, X_test, test_probs, preds_df
         gc.collect()
+    timing_dict['Stage 8-12: Test Inference'] = time.time() - t0_stage8
 
     print("\n" + "="*60)
     print("STAGE 10: Validating submission")
@@ -284,8 +330,13 @@ def run_train():
 
     total_time = time.time() - total_start
     print(f"\n{'='*60}")
+    print("TIMING SUMMARY:")
+    for stage_name, duration in timing_dict.items():
+        print(f"  {stage_name:.<45} {duration/60:>6.1f} min")
+    print(f"{'='*60}")
     print(f"PIPELINE COMPLETE in {total_time/60:.1f} minutes")
-    print(f"  Val F0.5: {best_f05:.4f} @ threshold {best_threshold:.3f}")
+    best_t_str = str({k: f"{v:.3f}" for k, v in best_threshold.items()}) if isinstance(best_threshold, dict) else f"{best_threshold:.3f}"
+    print(f"  Val F0.5: {best_f05:.4f} @ threshold {best_t_str}")
     print(f"  Blocking recall (train): {train_blocking_recall:.4f}")
     print(f"  Blocking recall (val): {val_blocking_recall:.4f}")
     print(f"{'='*60}")
@@ -321,12 +372,21 @@ def run_predict():
         test_pairs, test_data['test_s1'], test_data['test_s2'], test_data['test_s3']
     )
     test_probs = matcher.predict_proba(X_test)
-
-    if not THRESHOLD_PATH.exists():
+    
+    if not os.path.exists(THRESHOLD_PATH):
         raise FileNotFoundError(
             f"Tuned threshold not found at {THRESHOLD_PATH}; run train mode first."
         )
-    threshold = float(THRESHOLD_PATH.read_text(encoding='utf-8').strip())
+    with open(THRESHOLD_PATH, 'r', encoding='utf-8') as f:
+        threshold_text = f.read().strip()
+    import json
+    try:
+        threshold = json.loads(threshold_text)
+        train_countries = list(threshold.keys())
+    except json.JSONDecodeError:
+        threshold = float(threshold_text)
+        train_countries = ['US', 'India']
+        
     test_s1_ids = test_data['test_s1']['entity_id']
     matching_df = format_and_save_output(
         test_pairs, test_probs, threshold, test_s1_ids,
@@ -432,10 +492,14 @@ def run_cv():
 
         # Predict + threshold
         val_probs = matcher.predict_proba(X_val)
+        
+        # (Reranker bypassed - V4)
+        
         best_t, best_f05 = sweep_threshold(val_pairs, val_probs, fold_val_gt, fold_s1_val_ids)
 
         fold_scores.append(best_f05)
-        print(f"  Fold {fold_idx + 1} F0.5: {best_f05:.4f} @ threshold {best_t:.3f}")
+        best_t_str = str({k: f"{v:.3f}" for k, v in best_t.items()}) if isinstance(best_t, dict) else f"{best_t:.3f}"
+        print(f"  Fold {fold_idx + 1} F0.5: {best_f05:.4f} @ threshold {best_t_str}")
 
         gc.collect()
 
@@ -484,10 +548,21 @@ if __name__ == "__main__":
         default="train",
         help="Pipeline mode (default: train)"
     )
+    parser.add_argument(
+        "--skip-inference",
+        action="store_true",
+        help="Skip test data inference (useful for fast CV iteration)"
+    )
+    parser.add_argument(
+        "--loco-val",
+        type=str,
+        default=None,
+        help="Country to use for LOCO (Leave-One-Country-Out) validation (e.g. 'India')"
+    )
     args = parser.parse_args()
 
     if args.mode == "train":
-        run_train()
+        run_train(skip_inference=args.skip_inference, loco_country=args.loco_val)
     elif args.mode == "predict":
         run_predict()
     elif args.mode == "cv":

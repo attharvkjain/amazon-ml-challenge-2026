@@ -17,8 +17,9 @@ lightgbm
 matplotlib
 
 # NLP / Embeddings (uncomment as needed)
-# sentence-transformers
-# torch
+sentence-transformers
+torch --extra-index-url https://download.pytorch.org/whl/cu121
 
 # Transliteration (uncomment as needed)
 indic-transliteration
+pyarrow

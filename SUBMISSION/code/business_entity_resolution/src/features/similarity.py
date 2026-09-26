@@ -19,7 +19,9 @@ FEATURE_NAMES = [
     "token_sort_ratio_address", "token_set_ratio_address",
     "token_overlap_name", "token_overlap_address",
     "name_length_ratio", "address_length_ratio",
-    "shared_numeric_tokens", "source_indicator",
+    "numbers_jaccard_name", "numbers_jaccard_address",
+    "source_indicator",
+    "semantic_score",
 ]
 
 _NUM_RE = re.compile(r'\d+')
@@ -42,13 +44,17 @@ def _length_ratio(s1: str, s2: str) -> float:
         return 0.0
     return min(l1, l2) / max(l1, l2)
 
-def _shared_numeric_tokens(s1: str, s2: str) -> int:
+def _numbers_jaccard(s1: str, s2: str) -> float:
     nums1 = set(_NUM_RE.findall(s1)) if s1 else set()
     nums2 = set(_NUM_RE.findall(s2)) if s2 else set()
-    return len(nums1 & nums2)
+    if not nums1 and not nums2:
+        return 1.0  # Both have no numbers -> perfectly consistent
+    if not nums1 or not nums2:
+        return 0.0  # One has numbers, one doesn't -> inconsistent
+    return len(nums1 & nums2) / len(nums1 | nums2)
 
 
-def compute_pair_features(name1: str, name2: str, addr1: str, addr2: str, source: str) -> list[float]:
+def compute_pair_features(name1: str, name2: str, addr1: str, addr2: str, source: str, semantic_score: float) -> list[float]:
     name1 = name1 or ""
     name2 = name2 or ""
     addr1 = addr1 or ""
@@ -66,23 +72,18 @@ def compute_pair_features(name1: str, name2: str, addr1: str, addr2: str, source
         _token_overlap_jaccard(addr1, addr2),
         _length_ratio(name1, name2),
         _length_ratio(addr1, addr2),
-        _shared_numeric_tokens(addr1, addr2),
+        _numbers_jaccard(name1, name2),
+        _numbers_jaccard(addr1, addr2),
         1.0 if source == "S3" else 0.0,
+        float(semantic_score),
     ]
 
 
-def _extract_chunk(chunk_df: pd.DataFrame, s1_lookup: dict, s2s3_lookup: dict) -> np.ndarray:
-    """Process a chunk of pairs to extract features. Returns float32 numpy array for fast IPC."""
+def _extract_chunk_arrays(name1_arr, addr1_arr, name2_arr, addr2_arr, source_arr, score_arr) -> np.ndarray:
+    """Process a chunk of pre-mapped string arrays. Executed in worker process (loky)."""
     features = []
-    for row in chunk_df.itertuples(index=False):
-        s1_data = s1_lookup.get(row.s1_id, ('', ''))
-        s2s3_data = s2s3_lookup.get(row.s2s3_id, ('', ''))
-
-        feat = compute_pair_features(
-            s1_data[0], s2s3_data[0],
-            s1_data[1], s2s3_data[1],
-            row.source,
-        )
+    for n1, a1, n2, a2, src, sc in zip(name1_arr, addr1_arr, name2_arr, addr2_arr, source_arr, score_arr):
+        feat = compute_pair_features(n1, n2, a1, a2, src, sc)
         features.append(feat)
     return np.array(features, dtype=np.float32)
 
@@ -93,32 +94,68 @@ def extract_features(
     s2_df: pd.DataFrame,
     s3_df: pd.DataFrame,
 ) -> np.ndarray:
-    """Extract pairwise features for all candidate pairs using multithreading."""
-    n_jobs = max(1, multiprocessing.cpu_count() - 2)
-    print(f"[features] Extracting features for {len(pairs_df):,} pairs on {n_jobs} threads ...")
-
-    s1_lookup = {}
-    for row in s1_df.itertuples(index=False):
-        s1_lookup[row.entity_id] = (getattr(row, 'clean_name', ''), getattr(row, 'clean_address', ''))
-
-    s2s3_lookup = {}
-    for row in s2_df.itertuples(index=False):
-        s2s3_lookup[row.entity_id] = (getattr(row, 'clean_name', ''), getattr(row, 'clean_address', ''))
-    for row in s3_df.itertuples(index=False):
-        s2s3_lookup[row.entity_id] = (getattr(row, 'clean_name', ''), getattr(row, 'clean_address', ''))
-
+    """Extract pairwise features avoiding GIL by running Python loops in loky workers."""
     if len(pairs_df) == 0:
-        return np.array([], dtype=np.float32)
+        return np.empty((0, len(FEATURE_NAMES)), dtype=np.float32)
 
-    chunks = np.array_split(pairs_df, max(1, n_jobs * 4))
+    n_jobs = max(1, multiprocessing.cpu_count() - 2)
+
+    print(f"[features] Preparing {len(pairs_df):,} pairs for multiprocessing...")
     
-    # Using 'loky' backend for true multiprocessing. Pickling overhead is small
-    # compared to the massive speedup of avoiding GIL and iterrows overhead.
-    results_list = Parallel(n_jobs=n_jobs, backend='threading')(
-        delayed(_extract_chunk)(chunk, s1_lookup, s2s3_lookup) for chunk in chunks
-    )
+    # 1. Build rapid lookups in the main thread (Pandas Series)
+    s1_names = s1_df.set_index('entity_id')['clean_name']
+    s1_addrs = s1_df.set_index('entity_id')['clean_address']
+    
+    s2s3_df = pd.concat([s2_df, s3_df])
+    s2s3_names = s2s3_df.set_index('entity_id')['clean_name']
+    s2s3_addrs = s2s3_df.set_index('entity_id')['clean_address']
 
-    return np.vstack(results_list)
+    # 2. Split into MICRO-CHUNKS to prevent Loky Pickling OOM
+    # 500 chunks means ~400k rows per chunk. 
+    # 14 chunks in memory = ~5.6M strings = ~300 MB payload (completely safe).
+    n_chunks = 500
+    chunk_size = max(1, int(np.ceil(len(pairs_df) / n_chunks)))
+    chunks = [pairs_df.iloc[i:i + chunk_size] for i in range(0, len(pairs_df), chunk_size)]
+    
+    def prepare_chunk(chunk_df):
+        # Map IDs to strings in main thread
+        n1 = chunk_df['s1_id'].map(s1_names).fillna("").values
+        a1 = chunk_df['s1_id'].map(s1_addrs).fillna("").values
+        n2 = chunk_df['s2s3_id'].map(s2s3_names).fillna("").values
+        a2 = chunk_df['s2s3_id'].map(s2s3_addrs).fillna("").values
+        src = chunk_df['source'].values
+        sc = chunk_df['semantic_score'].values if 'semantic_score' in chunk_df.columns else np.zeros(len(chunk_df))
+        return (n1, a1, n2, a2, src, sc)
+
+    print(f"[features] Extracting features on {n_jobs} cores in batches to bound memory overhead...")
+    
+    # Pre-allocate to prevent np.vstack OOM on 13GB arrays
+    results_matrix = np.empty((len(pairs_df), len(FEATURE_NAMES)), dtype=np.float32)
+    current_idx = 0
+    
+    # Process batch by batch so we don't hold 48GB of strings in memory simultaneously
+    batch_size = n_jobs
+    for i in range(0, len(chunks), batch_size):
+        batch_chunks = chunks[i:i+batch_size]
+        batch_data = [prepare_chunk(c) for c in batch_chunks]
+        
+        batch_res = Parallel(n_jobs=n_jobs, backend='loky')(
+            delayed(_extract_chunk_arrays)(*data) for data in batch_data
+        )
+        
+        for chunk_arr in batch_res:
+            chunk_len = len(chunk_arr)
+            results_matrix[current_idx:current_idx+chunk_len] = chunk_arr
+            current_idx += chunk_len
+        
+        # Explicit cleanup to ensure garbage collection frees the string arrays
+        del batch_data, batch_res
+        import gc; gc.collect()
+
+    # Free mapping series
+    del s1_names, s1_addrs, s2s3_names, s2s3_addrs, s2s3_df
+    
+    return results_matrix
 
 
 def generate_labels(pairs_df: pd.DataFrame, ground_truth: dict[str, set[str]]) -> np.ndarray:

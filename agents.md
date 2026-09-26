@@ -1,4 +1,4 @@
-> **Version:** v3.1 | **Last updated:** 2026-09-26 02:30 IST | **By:** Codex
+> **Version:** v3.4 | **Last updated:** 2026-09-26 18:31 IST | **By:** Antigravity
 
 # AI Agent Operating Manual
 
@@ -109,7 +109,7 @@ assert list(df.columns) == ["source1_entity_id", "matched_entity_ids"]
 The canonical, tracked Agent Skills live in `skills/`; provider directories mirror the canonical files for agent discovery; maintain skills in `skills/`. Use skills when requested or when appropriate:
 
 - **`log-experiment`**: Logs a new experiment. Trigger when finishing a training run or explicitly asked.
-- **`validate-submission`**: Validates a submission payload. Trigger before creating a submission zip.
+- **`validate-submission`**: Validates a submission payload. Trigger before generating intermediate TSV files for the user, or before creating the final submission zip.
 - **`eda-report`**: Logs an EDA report. Trigger when completing data exploration or asked to log findings.
 - **`notebook-to-script`**: Extracts notebook logic to a script. Trigger when modularizing code or before committing a notebook.
 - **`new-experiment`**: Scaffolds a new experiment. Trigger when starting a new approach.
@@ -134,6 +134,14 @@ The canonical, tracked Agent Skills live in `skills/`; provider directories mirr
 - **Proactive Bottleneck Resolution:** If any pipeline stage takes an unreasonably long time, stop it immediately, identify the bottleneck (e.g., replace `iterrows` with `itertuples`, add `loky` multiprocessing), refactor the code, and restart. **CRITICAL:** Any performance rewrite must be verified to produce identical (or score-identical) output on a small sample before being trusted at full scale. Always proactively review code for performance bottlenecks before execution to ensure the fastest possible runtime given the goals.
 - **Pipeline Caching:** Always save intermediate assets (models, extracted features, candidate pairs) to disk using `pickle` or `joblib`. If the pipeline crashes or is interrupted, reload from the latest checkpoint instead of recomputing from scratch.
 - **Log Pitfalls:** Append any errors, crashes, bugs, performance bottlenecks, or tricky design issues you encounter and resolve to `context/challenges_faced.md`.
+- **Optimize Candidate Sets (Final Evaluation Rule):** Always optimize blocking to produce the smallest possible candidate set while maintaining high recall. `candidate_pairs.tsv` is tracked and graded in the final ranking. The smaller the candidate set per S1 entity, the better.
+- **Out-Of-Core Memory & Memory Limits (Critical Architecture Learnings):**
+  - **Micro-Chunk Loky:** Never pass 10+ GB string arrays over `loky` IPC processes. Loky serializes `object` strings which triples the memory footprint (Main Thread + IPC Pipe + Worker Unpickle) and hard-crashes the OS. Pass small micro-chunks (max 300MB) when using `loky`.
+  - **Memory-Mapped Caching:** When loading massive cached feature arrays (`.pkl`) for ML training, always use `joblib.load(..., mmap_mode='r')`. This maps the arrays directly to the SSD with zero Python RAM usage, leaving the entire system memory clear for C++ ML engines (LightGBM/XGBoost) to safely build their internal datasets.
+  - **No `np.vstack` for massive matrices:** Never use `np.vstack()` on a massive list of Numpy arrays at the end of feature extraction (it duplicates the entire memory payload). Pre-allocate an `np.empty` matrix and copy chunks directly into it.
+  - **Per-Model Caching:** Per-model caching is MANDATORY for ML Training stages to ensure a downstream model failure (e.g. XGBoost) doesn't wipe upstream progress (e.g. LightGBM).
+  - **Single-Threaded Pandas Bottlenecks:** Never run Pandas `sort_values` or `drop_duplicates` inside a sequential loop on massive (20M+ row) dataframes (e.g., threshold sweeping). Pre-sort the dataset exactly once, and use $O(\log N)$ `np.searchsorted` parallelized via `joblib.Parallel(prefer="threads")` to evaluate slices instantly across all cores without memory duplication.
+  - **Intermediate Pipeline Checkpointing:** Expensive ML operations (e.g., 1.5 hour Cross-Encoder inferences) MUST be explicitly dumped to `joblib` the exact moment they finish (`val_probs_reranked_{sample_key}.pkl`). Never wait until the end of the script to save state.
 
 ### ❌ DON'T
 
@@ -191,6 +199,9 @@ Specifically:
 
 | Version | Date | By | Summary |
 |---------|------|----|---------|
+| v3.4 | 2026-09-26 | Antigravity | Added Single-Threaded Pandas O(N log N) Bottlenecks and Intermediate Pipeline Checkpointing to Memory limits rule block. |
+| v3.3 | 2026-09-26 | Antigravity | Added extensive Out-Of-Core Memory & Memory Limits rule block (loky chunks, mmap_mode, np.vstack, per-model caching). |
+| v3.2 | 2026-09-26 | Antigravity | Added new DO rule to optimize Candidate Sets for final evaluation scoring. |
 | v3.1 | 2026-09-26 | Codex | Clarified that provider skill folders are discovery mirrors of the canonical `skills/` directory. |
 | v3.0 | 2026-09-26 | Codex | Added reconciliation bootstrap/trigger guidance and skill, corrected active lowercase data and canonical skills paths. |
 | v2.0 | 2026-09-26 | Antigravity | Updated Agent Skills path, removed hardcoded test row count, and added verification requirement to Bottleneck rule. |

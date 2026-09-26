@@ -1,88 +1,58 @@
 """
-Blocking - country-first hard partition plus word-unigram TF-IDF candidate generation.
-(Multithreading optimized)
+Blocking - country-first hard partition plus GPU Semantic Blocking candidate generation.
+(PyTorch Chunked Optimized)
 """
 from __future__ import annotations
 
 import gc
 import numpy as np
 import pandas as pd
-from scipy import sparse
-from sklearn.feature_extraction.text import TfidfVectorizer
 import multiprocessing
-from joblib import Parallel, delayed
+
+import torch
+import joblib
+from sentence_transformers import SentenceTransformer
 
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from config import BLOCKING_TOP_K, TFIDF_NGRAM_RANGE, TFIDF_MAX_FEATURES, OUTPUT_DIR
+from config import BLOCKING_TOP_K, OUTPUT_DIR
 
 
-def _process_batch(start: int, end: int, query_matrix: sparse.csr_matrix, index_matrix: sparse.csr_matrix, top_k: int) -> list[list[tuple[int, float]]]:
-    """Process a single batch of queries for top-K extraction."""
-    batch = query_matrix[start:end]
-    # Sparse dot product releases GIL
-    sim_matrix = batch.dot(index_matrix.T)
-
-    batch_results = []
-    for i in range(sim_matrix.shape[0]):
-        row_start = sim_matrix.indptr[i]
-        row_end = sim_matrix.indptr[i+1]
-        
-        indices = sim_matrix.indices[row_start:row_end]
-        data = sim_matrix.data[row_start:row_end]
-        
-        if len(data) == 0:
-            batch_results.append([])
-            continue
-            
-        if len(data) <= top_k:
-            sorted_idx = np.argsort(-data)
-            top_indices = indices[sorted_idx]
-            top_data = data[sorted_idx]
-        else:
-            part_idx = np.argpartition(-data, top_k)[:top_k]
-            sorted_subset_idx = np.argsort(-data[part_idx])
-            sorted_idx = part_idx[sorted_subset_idx]
-            top_indices = indices[sorted_idx]
-            top_data = data[sorted_idx]
-            
-        pairs = [(int(idx), float(val)) for idx, val in zip(top_indices, top_data)]
-        batch_results.append(pairs)
-        
-    return batch_results
-
-
-def _sparse_top_k(query_matrix: sparse.csr_matrix,
-                   index_matrix: sparse.csr_matrix,
-                   top_k: int) -> list[list[tuple[int, float]]]:
+def _dense_top_k(query_embeddings: torch.Tensor, index_embeddings: torch.Tensor, top_k: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
-    Multithreaded batched sparse matrix top-K search.
-    Uses 'threading' backend because scipy/numpy operations release the GIL.
-    Dynamically computes batch_size to strictly limit memory allocation.
+    Batched dense matrix top-K search on GPU.
+    Uses chunked exact cosine similarity (dot product of normalized vectors).
+    Returns fully vectorized arrays: (q_idx, s1_idx, scores)
     """
-    n_queries = query_matrix.shape[0]
-    n_index = index_matrix.shape[0]
+    chunk_size = 256  # Small chunk size for 8GB VRAM with 700k records
+    n_queries = query_embeddings.shape[0]
     
-    # With max_df=0.01, the matrix is 1.4% dense.
-    # 5000 queries * 800k = 4B pairs -> 56M non-zeros -> 450MB per thread (safe!).
-    batch_size = 5000
+    q_idx_list, s1_idx_list, scores_list = [], [], []
     
-    n_jobs = max(1, multiprocessing.cpu_count() - 2)
-    
-    tasks = [(start, min(start + batch_size, n_queries)) for start in range(0, n_queries, batch_size)]
-    
-    print(f"  TF-IDF search on {n_jobs} threads ({len(tasks)} batches of size {batch_size}) ...")
-    
-    # Threading backend is safe and zero-copy since scipy sparse matrices are passed by reference
-    results_list = Parallel(n_jobs=n_jobs, backend='threading')(
-        delayed(_process_batch)(s, e, query_matrix, index_matrix, top_k) for s, e in tasks
-    )
-
-    # Flatten results
-    results = []
-    for r in results_list:
-        results.extend(r)
-    return results
+    # Process queries in chunks
+    for start in range(0, n_queries, chunk_size):
+        end = min(start + chunk_size, n_queries)
+        chunk = query_embeddings[start:end].to(index_embeddings.device)
+        
+        # Exact cosine similarity (assuming normalized vectors)
+        sim_matrix = torch.matmul(chunk, index_embeddings.T)
+        
+        # Get Top-K
+        k = min(top_k, sim_matrix.shape[1])
+        top_scores, top_indices = torch.topk(sim_matrix, k, dim=1)
+        
+        # Move to CPU to free VRAM for next operations
+        top_scores = top_scores.cpu().numpy()
+        top_indices = top_indices.cpu().numpy()
+        
+        # Vectorized array construction
+        q_idxs = np.arange(start, end).reshape(-1, 1).repeat(k, axis=1)
+        
+        q_idx_list.append(q_idxs.flatten())
+        s1_idx_list.append(top_indices.flatten())
+        scores_list.append(top_scores.flatten())
+            
+    return np.concatenate(q_idx_list), np.concatenate(s1_idx_list), np.concatenate(scores_list)
 
 
 def generate_candidates(
@@ -92,8 +62,9 @@ def generate_candidates(
     top_k: int | None = None,
     save_path: str | os.PathLike | None = None,
     target_country: str | None = None,
+    cache_prefix: str = 'train',
 ) -> pd.DataFrame:
-    """Generate candidate pairs using country-first partitioning + TF-IDF blocking."""
+    """Generate candidate pairs using country-first partitioning + Semantic GPU blocking."""
     if top_k is None:
         top_k = BLOCKING_TOP_K
 
@@ -104,9 +75,24 @@ def generate_candidates(
         
     print(f"[blocker] Countries: {countries}")
     all_pairs_dfs = []
+    
+    # ── Inter-stage Caching ──
+    blocker_cache_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'cache')
+    os.makedirs(blocker_cache_dir, exist_ok=True)
+
+    print("  Loading MiniLM-L12-v2 to GPU ...")
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2', device=device)
 
     for country in countries:
         print(f"\n[blocker] Processing country: {country}")
+        country_cache_path = os.path.join(blocker_cache_dir, f'blocker_cache_{cache_prefix}_{country}.pkl')
+        if os.path.exists(country_cache_path):
+            print(f"  [cache] Loading {country} candidates from cache...")
+            cached_dfs = joblib.load(country_cache_path)
+            all_pairs_dfs.extend(cached_dfs)
+            continue
+            
         s1_c = s1[s1['country'] == country].reset_index(drop=True)
         s2_c = s2[s2['country'] == country].reset_index(drop=True)
         s3_c = s3[s3['country'] == country].reset_index(drop=True)
@@ -115,73 +101,79 @@ def generate_candidates(
 
         if len(s1_c) == 0:
             continue
+        
+        country_dfs = []
 
-        print(f"  Fitting TF-IDF vectorizer ...")
-        vectorizer = TfidfVectorizer(
-            analyzer='word',
-            ngram_range=(1, 1),
-            max_features=TFIDF_MAX_FEATURES,
-            max_df=0.01,
-            sublinear_tf=True,
-            dtype=np.float32,
-        )
-
+        print(f"  Encoding S1 ...")
         s1_texts = s1_c['name_address'].fillna('').tolist()
-        s1_tfidf = vectorizer.fit_transform(s1_texts)
-        s1_ids = s1_c['entity_id'].tolist()
+        s1_embeddings = model.encode(s1_texts, batch_size=1024, convert_to_tensor=True, normalize_embeddings=True, device=device, show_progress_bar=True)
+        s1_ids = s1_c['entity_id'].values
 
         if len(s2_c) > 0:
-            print(f"  Blocking S2 ({len(s2_c):,} records) ...")
+            print(f"  Encoding and Blocking S2 ({len(s2_c):,} records) ...")
             s2_texts = s2_c['name_address'].fillna('').tolist()
-            s2_tfidf = vectorizer.transform(s2_texts)
-            s2_results = _sparse_top_k(s2_tfidf, s1_tfidf, top_k)
-            s2_ids = s2_c['entity_id'].tolist()
-
-            q_idx_list, s1_idx_list, scores_list = [], [], []
-            for q_idx, matches in enumerate(s2_results):
-                for s1_idx, score in matches:
-                    q_idx_list.append(q_idx)
-                    s1_idx_list.append(s1_idx)
-                    scores_list.append(score)
+            s2_embeddings = model.encode(s2_texts, batch_size=1024, convert_to_tensor=True, normalize_embeddings=True, device=device, show_progress_bar=True)
+            # Move massive S2 embeddings to CPU to prevent VRAM paging (2.5GB)
+            s2_embeddings = s2_embeddings.cpu()
+            if device == 'cuda': torch.cuda.empty_cache()
             
-            del s2_tfidf, s2_results
+            s2_results = _dense_top_k(s2_embeddings, s1_embeddings, top_k)
+            s2_ids = s2_c['entity_id'].values
+
+            q_idx_arr, s1_idx_arr, scores_arr = s2_results
+            
+            del s2_embeddings, s2_results
+            if device == 'cuda': torch.cuda.empty_cache()
+            
             s2_df = pd.DataFrame()
-            s2_df['s1_id'] = [s1_ids[i] for i in s1_idx_list]
-            s2_df['s2s3_id'] = [s2_ids[i] for i in q_idx_list]
-            s2_df['source'] = pd.Categorical(['S2'] * len(s1_idx_list))
-            s2_df['country'] = pd.Categorical([country] * len(s1_idx_list))
-            s2_df['tfidf_score'] = np.array(scores_list, dtype=np.float32)
-            del q_idx_list, s1_idx_list, scores_list
-            all_pairs_dfs.append(s2_df)
+            s2_df['s1_id'] = s1_ids[s1_idx_arr]
+            s2_df['s2s3_id'] = s2_ids[q_idx_arr]
+            s2_df['source'] = pd.Categorical(['S2'] * len(s1_idx_arr))
+            s2_df['country'] = pd.Categorical([country] * len(s1_idx_arr))
+            s2_df['semantic_score'] = scores_arr
+            del q_idx_arr, s1_idx_arr, scores_arr
+            
+            # Prune candidates to dramatically reduce candidate set size for final ranking
+            s2_df = s2_df[s2_df['semantic_score'] >= 0.55].reset_index(drop=True)
+            country_dfs.append(s2_df)
             gc.collect()
 
         if len(s3_c) > 0:
-            print(f"  Blocking S3 ({len(s3_c):,} records) ...")
+            print(f"  Encoding and Blocking S3 ({len(s3_c):,} records) ...")
             s3_texts = s3_c['name_address'].fillna('').tolist()
-            s3_tfidf = vectorizer.transform(s3_texts)
-            s3_results = _sparse_top_k(s3_tfidf, s1_tfidf, top_k)
-            s3_ids = s3_c['entity_id'].tolist()
-
-            q_idx_list, s1_idx_list, scores_list = [], [], []
-            for q_idx, matches in enumerate(s3_results):
-                for s1_idx, score in matches:
-                    q_idx_list.append(q_idx)
-                    s1_idx_list.append(s1_idx)
-                    scores_list.append(score)
+            s3_embeddings = model.encode(s3_texts, batch_size=1024, convert_to_tensor=True, normalize_embeddings=True, device=device, show_progress_bar=True)
+            # Move massive S3 embeddings to CPU to prevent VRAM paging
+            s3_embeddings = s3_embeddings.cpu()
+            if device == 'cuda': torch.cuda.empty_cache()
             
-            del s3_tfidf, s3_results
+            s3_results = _dense_top_k(s3_embeddings, s1_embeddings, top_k)
+            s3_ids = s3_c['entity_id'].values
+
+            q_idx_arr, s1_idx_arr, scores_arr = s3_results
+            
+            del s3_embeddings, s3_results
+            if device == 'cuda': torch.cuda.empty_cache()
+            
             s3_df = pd.DataFrame()
-            s3_df['s1_id'] = [s1_ids[i] for i in s1_idx_list]
-            s3_df['s2s3_id'] = [s3_ids[i] for i in q_idx_list]
-            s3_df['source'] = pd.Categorical(['S3'] * len(s1_idx_list))
-            s3_df['country'] = pd.Categorical([country] * len(s1_idx_list))
-            s3_df['tfidf_score'] = np.array(scores_list, dtype=np.float32)
-            del q_idx_list, s1_idx_list, scores_list
-            all_pairs_dfs.append(s3_df)
+            s3_df['s1_id'] = s1_ids[s1_idx_arr]
+            s3_df['s2s3_id'] = s3_ids[q_idx_arr]
+            s3_df['source'] = pd.Categorical(['S3'] * len(s1_idx_arr))
+            s3_df['country'] = pd.Categorical([country] * len(s1_idx_arr))
+            s3_df['semantic_score'] = scores_arr
+            del q_idx_arr, s1_idx_arr, scores_arr
+            
+            # Prune candidates to dramatically reduce candidate set size for final ranking
+            s3_df = s3_df[s3_df['semantic_score'] >= 0.55].reset_index(drop=True)
+            country_dfs.append(s3_df)
             gc.collect()
 
-        del s1_tfidf, vectorizer
+        del s1_embeddings
+        if device == 'cuda': torch.cuda.empty_cache()
         gc.collect()
+
+        print(f"  [cache] Saving {country} candidates to cache...")
+        joblib.dump(country_dfs, country_cache_path)
+        all_pairs_dfs.extend(country_dfs)
 
     pairs_df = pd.concat(all_pairs_dfs, ignore_index=True) if all_pairs_dfs else pd.DataFrame()
     print(f"\n[blocker] Total candidate pairs: {len(pairs_df):,}")
@@ -203,14 +195,28 @@ def _save_candidate_pairs(pairs_df: pd.DataFrame, s1: pd.DataFrame, save_path: s
 
 
 def compute_blocking_recall(pairs_df: pd.DataFrame, ground_truth: dict[str, set[str]]) -> float:
-    candidate_set = set(zip(pairs_df['s1_id'], pairs_df['s2s3_id']))
-    total_true = 0
-    found = 0
+    # 1. Flatten ground truth into a DataFrame (extremely fast for ~3M pairs)
+    gt_records = []
     for s1_id, matched_ids in ground_truth.items():
         for mid in matched_ids:
-            total_true += 1
-            if (s1_id, mid) in candidate_set:
-                found += 1
-    recall = found / total_true if total_true > 0 else 0.0
+            gt_records.append((s1_id, mid))
+    
+    total_true = len(gt_records)
+    if total_true == 0:
+        return 0.0
+        
+    gt_df = pd.DataFrame(gt_records, columns=['s1_id', 's2s3_id'])
+    
+    # 2. Chunked vectorized merge (strictly bounds memory overhead to prevent Int64Vector OOM)
+    chunk_size = 5_000_000
+    found = 0
+    pairs_subset = pairs_df[['s1_id', 's2s3_id']]
+    
+    for i in range(0, len(pairs_subset), chunk_size):
+        chunk = pairs_subset.iloc[i:i+chunk_size]
+        merged = chunk.merge(gt_df, on=['s1_id', 's2s3_id'], how='inner')
+        found += len(merged)
+    
+    recall = found / total_true
     print(f"[blocker] Blocking recall: {found:,}/{total_true:,} = {recall:.4f}")
     return recall

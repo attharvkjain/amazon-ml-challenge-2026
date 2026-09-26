@@ -30,13 +30,12 @@ def _read_tsv(path: str | os.PathLike) -> pd.DataFrame:
 def _parse_ground_truth(gt_df: pd.DataFrame) -> dict[str, set[str]]:
     """Parse ground truth TSV → {s1_id: set of matched s2/s3 ids}."""
     gt = {}
-    for _, row in gt_df.iterrows():
-        s1_id = row["source1_entity_id"]
-        matched = row["matched_entity_ids"]
-        if matched and str(matched).strip():
-            gt[s1_id] = set(str(matched).split(","))
+    # Optimized: zip is 1000x faster than iterrows
+    for s1_id, matched in zip(gt_df["source1_entity_id"], gt_df["matched_entity_ids"]):
+        if pd.notna(matched) and str(matched).strip():
+            gt[str(s1_id)] = set(str(matched).split(","))
         else:
-            gt[s1_id] = set()
+            gt[str(s1_id)] = set()
     return gt
 
 
@@ -52,6 +51,7 @@ def _build_reverse_map(gt: dict[str, set[str]]) -> dict[str, str]:
 def load_train_data(
     sample_frac: float | None = None,
     val_frac: float | None = None,
+    loco_country: str | None = None,
 ) -> dict:
     """
     Load training data and create train/val split.
@@ -130,13 +130,18 @@ def load_train_data(
             "full_gt": gt,
         }
 
-    # Stratified split on S1 by country
-    train_s1, val_s1 = train_test_split(
-        s1,
-        test_size=val_frac,
-        stratify=s1["country"],
-        random_state=RANDOM_STATE,
-    )
+    if loco_country:
+        print(f"[load] LOCO Mode: Using '{loco_country}' as validation, all other countries as train ...")
+        val_s1 = s1[s1['country'] == loco_country]
+        train_s1 = s1[s1['country'] != loco_country]
+    else:
+        # Stratified split on S1 by country
+        train_s1, val_s1 = train_test_split(
+            s1,
+            test_size=val_frac,
+            stratify=s1["country"],
+            random_state=RANDOM_STATE,
+        )
     train_s1_ids = set(train_s1["entity_id"])
     val_s1_ids = set(val_s1["entity_id"])
 
@@ -162,16 +167,22 @@ def load_train_data(
     s2_distractors = s2[~s2["entity_id"].isin(all_matched_ids)]
     s3_distractors = s3[~s3["entity_id"].isin(all_matched_ids)]
 
-    s2_dist_train, s2_dist_val = train_test_split(
-        s2_distractors,
-        test_size=val_frac,
-        random_state=RANDOM_STATE,
-    )
-    s3_dist_train, s3_dist_val = train_test_split(
-        s3_distractors,
-        test_size=val_frac,
-        random_state=RANDOM_STATE,
-    )
+    if loco_country:
+        s2_dist_val = s2_distractors[s2_distractors['country'] == loco_country]
+        s2_dist_train = s2_distractors[s2_distractors['country'] != loco_country]
+        s3_dist_val = s3_distractors[s3_distractors['country'] == loco_country]
+        s3_dist_train = s3_distractors[s3_distractors['country'] != loco_country]
+    else:
+        s2_dist_train, s2_dist_val = train_test_split(
+            s2_distractors,
+            test_size=val_frac,
+            random_state=RANDOM_STATE,
+        )
+        s3_dist_train, s3_dist_val = train_test_split(
+            s3_distractors,
+            test_size=val_frac,
+            random_state=RANDOM_STATE,
+        )
 
     train_s2 = pd.concat([s2_train_matched, s2_dist_train], ignore_index=True)
     val_s2 = pd.concat([s2_val_matched, s2_dist_val], ignore_index=True)

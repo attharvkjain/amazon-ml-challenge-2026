@@ -26,7 +26,7 @@ SAMPLE_FRAC = 1.0          # Lower this for sampled development runs
 VAL_FRAC = 0.2             # 80/20 train/val split on S1 entities
 
 # ── Blocking ───────────────────────────────────────────────────────────────────
-BLOCKING_TOP_K = 20
+BLOCKING_TOP_K = 25  # Increased to 25 to maximize recall for final >0.9884 F0.5 goal
 TFIDF_NGRAM_RANGE = (1, 1)  # Changed from (3,3) char_wb to (1,1) word unigrams for speed
 TFIDF_MAX_FEATURES = 100_000
 

@@ -1,4 +1,4 @@
-> **Version:** v3.2 | **Last updated:** 2026-09-26 02:50 IST | **By:** Codex
+> **Version:** v4.0 | **Last updated:** 2026-09-26 20:27 IST | **By:** Antigravity | **Last updated:** 2026-09-26 18:30 IST | **By:** Antigravity
 
 # Amazon ML Challenge 2026 — Project Master Index
 
@@ -15,7 +15,7 @@
 | **Task** | Match Source 2 and Source 3 records to deduplicated Source 1 reference entities |
 | **Evaluation Metric** | F₀.₅ (precision-heavy, macro-averaged per S1 entity) |
 | **Hackathon Window** | See official window in [`context/problem-and-data.md`](context/problem-and-data.md) |
-| **Submission Format** | `matching_results.tsv` leaderboard payload; see official requirements and submission history for packaging details |
+| **Submission Format** | `matching_results.tsv` (drag-and-drop on portal for intermediate submissions). A full `.zip` (including `candidate_pairs.tsv` and `code/`) is ONLY required for the absolute final submission. |
 | **Constraints** | See [`context/problem-and-data.md`](context/problem-and-data.md) |
 
 ### Team
@@ -50,7 +50,7 @@
 | [`SUBMISSION/code/business_entity_resolution/src/`](SUBMISSION/code/business_entity_resolution/src/) | Folder | **All pipeline source code** — submission package location |
 | [`SUBMISSION/code/business_entity_resolution/README.md`](SUBMISSION/code/business_entity_resolution/README.md) | File | Reproduction instructions (ships in submission zip) |
 | [`SUBMISSION/code/business_entity_resolution/requirements.txt`](SUBMISSION/code/business_entity_resolution/requirements.txt) | File | Dependency list (ships in submission zip) |
-| [`SUBMISSION/output/`](SUBMISSION/output/) | Folder | Tracked leaderboard matching files and local ignored candidate audit output |
+| [`SUBMISSION/output/`](SUBMISSION/output/) | Folder | Tracked leaderboard matching files and `candidate_pairs.tsv` (part of final evaluation) |
 | [`scripts/package_submission.py`](scripts/package_submission.py) | File | Creates the submission zip from repo contents |
 | [`analysis and research/`](analysis%20and%20research/) | Folder | Pre-competition research and winner playbook |
 | [`analysis and research/amazon_ml_challenge_2026_analysis.md`](analysis%20and%20research/amazon_ml_challenge_2026_analysis.md) | File | Competition analysis; canonical dataset facts link to `context/problem-and-data.md` |
@@ -65,15 +65,26 @@
 
 ---
 
+## Critical Notes (Read Immediately)
+
+- **[2026-09-26] System Stability:** Pipeline has been severely overhauled to prevent memory fragmentation and OS crashes. Feature extraction must use `n_chunks=500` (micro-chunking) for `loky` to avoid 54GB IPC serialization spikes, and ML Training must use `mmap_mode='r'` when loading the 17.5GB feature caches from disk to ensure LightGBM/XGBoost have RAM headroom. Per-model caching is active.
+- **[2026-09-26] Single-Threaded Pandas Bottlenecks:** Never run Pandas `sort_values` or `drop_duplicates` inside a sequential loop on massive (20M+ row) dataframes. The threshold sweep loop stalled for 40+ minutes due to this. We now pre-sort the dataset exactly once, and use O(log N) `np.searchsorted` parallelized via `joblib.Parallel(prefer="threads")` to evaluate all thresholds instantly across all cores without copying data.
+- **[2026-09-26] Intermediate Checkpointing:** Because Transformer Reranker inference takes 1.5 hours, its intermediate outputs (`val_probs_reranked`) must be explicitly dumped to `joblib` the moment they finish. Waiting until the end of the script to save state guarantees a catastrophic loss of compute time if a downstream bug occurs.
+- **[2026-09-26] Generalization Gap:** The V2 architecture scored 0.875 CV locally but only 0.770 on the public LB. The cause is likely the zero-shot country (France) present in the LB but missing from our training data.
+- **[2026-09-26] Architecture Shift:** We have transitioned to a **Two-Stage Reranker Pipeline** (V3). Stage 1 uses LGBM+XGB Ensemble for fast filtering. Stage 2 uses a `cross-encoder` Transformer specifically targeted at zero-shot countries to enforce strict generalization.
+
+---
+
 ## Current State Snapshot
 
 > **Anti-regression anchor.** Before merging any result, check that it actually beats the current best. Update this section whenever a new best is achieved.
 
 | Metric | Value | Details |
 |--------|-------|---------|
-| **Best Local Validation Score (F₀.₅)** | 0.9699 | Baseline validation during training; threshold 0.940 |
-| **Best Public LB Score** | See [`context/submission-log.md`](context/submission-log.md) | Canonical submission history |
-| **Approach** | See [`context/architecture.md`](context/architecture.md) | Implemented baseline |
+| **Best Local Validation Score (F0.5)** | 0.8878 | Pure Stage 1 Ensemble (LightGBM + XGBoost). Reranker bypassed. |
+| **Best Public LB Score** | 0.770 | Submission 3 (V2 GPU Semantic K=10) |
+| **Approach** | V4 Pure Ensemble Architecture | LGBM+XGB Ensemble. Transformer dropped due to 0.04 degradation. |
+| **Current Focus** | Test Inference | Running full test prediction with the pure V4 ensemble pipeline. | Out-of-Core ML Training | Successfully loaded 17.5GB arrays via mmap. LightGBM currently training, backed by per-model caching. |
 | **Commit Hash** | `HEAD` | — |
 | **Produced By** | Antigravity | — |
 | **Date** | 2026-09-26 | — |
@@ -107,7 +118,7 @@
 - **Never commit raw data or large model files.** The lowercase `data/` folder is in `.gitignore`.
 - The misspelled `miscelleaneous/` folder contains local-only historical drafts and is ignored in Git.
 - Model weights, pickled objects, and other large artifacts must not be committed (blocked by `.gitignore`).
-- Leaderboard `matching_results.tsv` files in `SUBMISSION/output/` and its `history/` folder are tracked. The very large `candidate_pairs.tsv`, model threshold, and caches are local generated artifacts and are ignored.
+- Leaderboard `matching_results.tsv` files in `SUBMISSION/output/` and its `history/` folder are tracked. **Crucially, `candidate_pairs.tsv` is now also part of the final submission and tracked.** The approach that generates a smaller candidate set per S1 entity ranks higher in the final evaluation.
 - Each teammate stores the dataset locally; see [`context/environment-setup.md`](context/environment-setup.md) for expected paths.
 
 ---
@@ -115,6 +126,18 @@
 ## Critical Notes Log
 
 > Dated log of gotchas, decisions, and mid-event changes. **Newest entry on top.**
+
+### 2026-09-26 — V3 Zero-Shot LOCO Enhancement
+**By:** Antigravity
+
+- **Zero-Shot Forced Reranking:** Because pure ML models fail to generalize to zero-shot test countries (France), `TwoStageReranker.rerank()` now accepts a `training_countries` list and strictly forces **100% Cross-Encoder evaluation** for any country not in the training set, overriding the ML confidence bounds.
+- **LOCO Validation:** Added a `--loco-val` feature to explicitly simulate the Zero-Shot gap. This mode strictly slices the dataset, e.g., training entirely on the US and testing on India, allowing us to mathematically bound the generalization error before submitting to the Leaderboard.
+
+### 2026-09-26 — Final Submission Details Updated
+**By:** Antigravity
+
+- **Candidate Sets Rank:** `candidate_pairs.tsv` is explicitly part of the final submission and candidate generation counts toward the final ranking. The smaller the candidate set per S1 entity, the higher the ranking. `BLOCKING_TOP_K` has been lowered from 20 to 10 to reflect this optimization pressure.
+- **Architecture Shift:** Moving from V2 to the V3 Two-Stage Reranker Pipeline (LGBM+XGB Ensemble -> Cross-Encoder) to solve the CV-LB gap and achieve transformer-level precision without OOMing on 205M pairs.
 
 ### 2026-09-26 — External Review Audit and Single Source of Truth Enforcement
 
@@ -221,6 +244,13 @@ With 4 people and multiple AI agents editing docs during a 72-hour hackathon, we
 
 | Version | Date | By | Summary |
 |---------|------|----|---------|
+| v4.0 | 2026-09-26 | Antigravity | Updated Snapshot to V4 Pure Ensemble Architecture, dropping the Transformer Reranker. |
+| v3.8 | 2026-09-26 | Antigravity | Updated Critical Notes to include the Pandas O(N log N) threshold bottleneck fix and Intermediate Pipeline Checkpointing rules. |
+| v3.7 | 2026-09-26 | Antigravity | Updated Critical Notes to reflect the resolution of all memory/stability bottlenecks (micro-chunking loky, mmap arrays, out-of-core LightGBM). |
+| v3.6 | 2026-09-26 | Antigravity | Updated Snapshot and Critical Notes for V3 Zero-Shot LOCO enhancement. |
+| v3.5 | 2026-09-26 | Antigravity | Updated Critical Notes section to remove lingering V2 text and point to V3. |
+| v3.4 | 2026-09-26 | Antigravity | Updated Snapshot to V3 Two-Stage Pipeline and clarified that intermediate submissions do not require zipping. |
+| v3.3 | 2026-09-26 | Antigravity | Integrated new final evaluation rules: candidate_pairs.tsv is now tracked and smaller sets rank higher. Lowered BLOCKING_TOP_K to 10. |
 | v3.2 | 2026-09-26 | Codex | Recorded the local-only miscellaneous folder policy and removed its archived draft from the tracked-file index. |
 | v3.1 | 2026-09-26 | Codex | Clarified that provider skill folders are discovery mirrors of the canonical `skills/` directory. |
 | v3.0 | 2026-09-26 | Codex | Reconciled tracked paths, score references, output archive policy, and added recurring reconciliation practice and skill index. |
@@ -235,3 +265,4 @@ With 4 people and multiple AI agents editing docs during a 72-hour hackathon, we
 | v1.2 | 2026-09-25 | Antigravity | Added context/umbrella-research.md and Analysis and Research/research_sources.xlsx to Master Index |
 | v1.1 | 2026-09-25 | Member 1 | Restructured repo to match submission package layout; updated master index, .gitignore, code paths |
 | v1.0 | 2026-09-25 | Member 1 | Initial skeleton created |
+

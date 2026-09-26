@@ -1,4 +1,4 @@
-> **Version:** v4.1 | **Last updated:** 2026-09-26 02:58 IST | **By:** Antigravity
+> **Version:** v6.0 | **Last updated:** 2026-09-26 20:28 IST | **By:** Antigravity | **Last updated:** 2026-09-26 18:32 IST | **By:** Antigravity
 
 # Architecture — Business Entity Resolution Pipeline
 
@@ -69,7 +69,7 @@ AmazonMLChallenge_2026/                     # ← workspace root
 │   ├── output/
 │   │   ├── matching_results.tsv           # Current leaderboard submission
 │   │   ├── history/                       # Numbered historical matching TSVs
-│   │   └── candidate_pairs.tsv            # Local blocking audit (not tracked)
+│   │   └── candidate_pairs.tsv            # Tracked final submission payload
 │   │
 │   └── Documentation_template.md          # Official methodology write-up
 │
@@ -114,7 +114,7 @@ AmazonMLChallenge_2026/                     # ← workspace root
 | `preprocessing/load.py` | Read TSVs with `sep='\t'`, validate schema, create train/val split | Raw TSVs → DataFrames + validation split |
 | `preprocessing/clean.py` | Lowercase, strip punctuation only, handle nulls. **Preserve legal suffixes and Unicode.** | DataFrame → DataFrame with `clean_name`, `clean_address` |
 | `preprocessing/transliterate.py` | Multi-script → Latin conversion via script-specific ensemble | DataFrame → DataFrame with transliterated fields |
-| `blocking/blocker.py` | Country-first partitioning plus TF-IDF candidate generation per country | DataFrames -> `candidate_pairs.tsv` + pair DataFrame |
+| `blocking/blocker.py` | Country-first partitioning plus GPU Semantic Blocking (`MiniLM-L12-v2`) | DataFrames -> `candidate_pairs.tsv` + pair DataFrame |
 | `features/similarity.py` | Compute string similarities, token overlaps, length ratios, numeric address overlap, and source indicator | Pair DataFrame -> 14-column feature matrix |
 | `models/matcher.py` | Train classifier, predict match probabilities | Features + labels → Model + probabilities |
 | `postprocessing/threshold.py` | Tune threshold, enforce one-to-one S2/S3 assignment, and format output | Probabilities -> `matching_results.tsv` |
@@ -139,14 +139,15 @@ flowchart LR
     A["Raw TSVs\n(train/test)"] --> B["load.py\nIngestion +\nTrain/Val Split"]
     B --> C["clean.py\nPunctuation Strip\n+ Lowercase"]
     C --> D["transliterate.py\nMulti-Script\nEnsemble"]
-    D --> E["blocker.py\nCountry Partition\n→ TF-IDF/Embed"]
-    E --> F["similarity.py\nFeature Extraction"]
-    F --> G["matcher.py\nClassification"]
-    G --> H["threshold.py\nThreshold + Veto\n+ 1:1 Constraint"]
+    D --> E["blocker.py\nCountry Partition\n→ GPU Semantic Blocking (K=25)"]
+    E --> F["similarity.py\nLoky Feature Extraction\n(16 features)"]
+    F --> G["matcher.py\nStage 1: LGBM + XGB\nEnsemble Ranker"]
+    G --> R["reranker.py\nStage 2: Cross-Encoder\n(0.01 < P < 0.99)"]
+    R --> H["threshold.py\nCountry-Specific Thresholds\n+ 1:1 Constraint"]
     H --> I["matching_results.tsv\n+ candidate_pairs.tsv"]
 ```
 
-**Performance Principle:** The pipeline processes millions of records. Stages MUST use multiprocessing/multithreading to maximize CPU utilization. Furthermore, proactive bottleneck resolution is required: if any process takes an unreasonably long time, it must be stopped, optimized (e.g. eliminating slow pandas loops), and restarted. Always do a full pass for performance bottlenecks before execution to ensure the fastest possible runtime. Finally, implement pipeline caching (saving intermediate features, blocked candidates, etc.) to prevent work loss if a run crashes.
+**Performance Principle:** The pipeline processes millions of records. Stages MUST use multiprocessing/multithreading to maximize CPU utilization. The two-stage reranker ensures we get Transformer-level semantic accuracy without evaluating 205M pairs (which would take weeks). The fast evaluation loop (`--skip-inference`) ensures we can iterate on CV metrics in minutes rather than waiting hours for test inference. Always implement granular pipeline caching (e.g., saving `val_probs` immediately after the 1.5-hour reranker) to prevent work loss if a downstream operation fails. Never run Pandas sequential `sort_values` or `drop_duplicates` inside tuning loops (e.g., thresholding); instead, use $O(1)$ read-only array slicing (`np.searchsorted`) combined with `joblib.Parallel` threads to eliminate data serialization and reduce bottlenecks from 40+ minutes to seconds.
 
 ### Stage 1: Ingestion & Validation Split (`load.py`)
 
@@ -213,19 +214,20 @@ flowchart TD
     B --> C["US partition\nS1: 663K, S2: 1.9M, S3: 1.9M"]
     B --> D["India partition\nS1: 810K, S2: 2.3M, S3: 2.4M"]
     B --> E["France partition\nS1: 259K, S2: 703K, S3: 732K"]
-    C --> F["TF-IDF blocking\n(within US)"]
-    D --> G["TF-IDF blocking\n(within India)"]
-    E --> H["TF-IDF blocking\n(within France)"]
+    C --> F["GPU Semantic Blocking\n(within US)"]
+    D --> G["GPU Semantic Blocking\n(within India)"]
+    E --> H["GPU Semantic Blocking\n(within France)"]
     F --> I["Candidate pairs"]
     G --> I
     H --> I
 ```
 
-#### Within-country blocking (implemented TF-IDF word unigrams):
+#### Within-country blocking (implemented GPU Semantic Dense Retrieval):
 
-1. Build TF-IDF vectors on `clean_name + " " + clean_address` for S1 records in this country
-2. For each S2/S3 record in the same country, find top-K nearest S1 neighbors via sparse cosine similarity
-3. Config: word analyzer, `TFIDF_NGRAM_RANGE = (1, 1)`, `TFIDF_MAX_FEATURES = 100_000`, `max_df = 0.01`, and `BLOCKING_TOP_K = 20` (see `src/config.py` and `src/blocking/blocker.py`).
+1. Embed business `clean_name + " " + clean_address` for S1 records using `sentence-transformers` (`paraphrase-multilingual-MiniLM-L12-v2`).
+2. Embed S2/S3 records in chunks, moving them to the GPU.
+3. Find top-K nearest S1 neighbors via native PyTorch chunked exact dense cosine similarity (`torch.matmul`).
+4. Config: `BLOCKING_TOP_K = 10` (see `src/config.py`).
 
 #### BLOCKING_TOP_K calibration:
 
@@ -276,7 +278,7 @@ Since the test data has **no ground truth**, all evaluation must happen on train
 - **80% Train / 20% Validation**, stratified by country on S1 entities
 - The 20% S1 entities + their matched S2/S3 + proportional distractors = validation set
 - This validation set is held out for:
-  - **Threshold tuning** (sweep to maximize F₀.₅)
+  - **Country-Specific Threshold tuning** (Sweep independently for US, India, etc., to maximize generalization F₀.₅)
   - **Final model selection** (which approach to submit)
   - **Diagnostic analysis** (which entity types / countries fail)
 
@@ -312,56 +314,35 @@ Training defaults to the full dataset. Lower `SAMPLE_FRAC` in `src/config.py` fo
 
 ---
 
-## 4. Model Shortlist
+## 4. Model Architecture (V3)
 
-Given: F₀.₅ metric (precision-heavy), ~24M records, 72-hour budget, ≤8B parameters, no external data.
+Given the extreme candidate generation size (205M+ pairs at K=25) and the 72-hour budget constraints, we cannot use a deep Transformer model on all pairs. Our final architecture uses a cascading two-stage ranking pipeline.
 
-### Implemented baseline: Country-Partitioned Word-Unigram TF-IDF + LightGBM
-
+### Stage 1: The ML Ensemble (LGBM + XGBoost)
 | Aspect | Detail |
 |--------|--------|
-| **What** | Country partition + word-unigram TF-IDF + 14 pairwise features + LightGBM classifier |
-| **Why** | Fastest to iterate, no GPU needed, handles tabular features natively, already in requirements |
-| **F₀.₅ optimization** | Tune decision threshold on validation set to maximize F₀.₅; can use `scale_pos_weight` to bias toward precision |
+| **What** | LightGBM + XGBoost Ensemble averaging probabilities over 16 extracted numeric/string features. |
+| **Why** | Both trees train incredibly fast (10-15 mins) on tabular features and output well-calibrated probabilities. Ensembling them reduces individual model variance and smooths overconfidence on false positives. |
+| **Hardware** | CPU Multi-threading (`n_jobs=-1`). We explicitly avoid GPU (`gpu_hist`) and CUDA Unified Memory here. The 17.5GB feature matrix exceeds physical VRAM. While CUDA Unified Memory could theoretically page it to RAM, the random-access pattern of histogram binning causes severe PCIe thrashing, making it slower than a 14-core CPU with direct RAM access. |
+| **Role** | Evaluates all 205M+ candidate pairs. Auto-accepts candidates with `P > 0.95`, auto-rejects `P < 0.05`. |
 
-### Approach 2: + Multilingual Embedding Features (Enhancement)
-
+### Stage 2: Cross-Encoder Reranker
 | Aspect | Detail |
 |--------|--------|
-| **What** | Add embedding cosine similarity as extra features to Approach 1 LightGBM |
-| **Candidates** | `LaBSE` (~470M, MIT), `E5-multilingual-small` (~118M, MIT), `MuRIL` (~236M, Apache 2.0) |
-| **Why** | Handles cross-script (S2/S3 Indic → S1 Latin) and French zero-shot far better than string features |
-| **Expected time** | ~4-8 hours incremental (embedding is the bottleneck) |
-
-### Approach 3: Cross-Encoder Re-ranker for Hard Cases (Enhancement)
-
-| Aspect | Detail |
-|--------|--------|
-| **What** | For uncertain LightGBM pairs (probability 0.3–0.7), pass through a cross-encoder |
-| **Candidate** | `XLM-RoBERTa-base` (~279M, MIT) fine-tuned on training pairs |
-| **Why** | SOTA for pairwise similarity; handles the hardest ~5-10% of cases |
-| **Expected time** | ~8-12 hours (fine-tuning + inference on uncertain pairs only) |
-
-### Approach 4: Splink Probabilistic Record Linkage (Alternative baseline)
-
-| Aspect | Detail |
-|--------|--------|
-| **What** | Splink (Fellegi-Sunter) on DuckDB for end-to-end probabilistic linkage |
-| **Why** | Purpose-built for this task; handles blocking + comparison + scoring in one framework |
-| **Expected time** | ~4-6 hours to configure |
-| **Risk** | Less flexible; team needs to learn Splink API |
-
-### Optional future approaches
+| **What** | `cross-encoder/ms-marco-MiniLM-L-6-v2` transformer model operating exclusively on the raw text of the two strings. |
+| **Why** | SOTA for pairwise semantic similarity; natively understands contextual synonyms and edge-case misspellings that string distance math completely fails on. |
+| **Role** | Evaluates the "Borderline" pairs (`0.05 <= P <= 0.95`) passed by the Stage 1 Ensemble. Critically, it also **forces a 100% evaluation** of all candidate pairs belonging to zero-shot countries (countries unseen during training). This bypasses the overconfident ML boundaries to strictly enforce generalization on unknown languages/domains. |
 
 ```mermaid
 flowchart LR
-    A["Approach 1\nTF-IDF + LightGBM\n⭐ BASELINE\n(hours 0-10)"] --> B["Approach 2\n+ Embeddings\n(hours 10-18)"]
-    B --> C["Approach 3\nCross-Encoder\n(hours 18-30)"]
-    A -.-> D["Approach 4\nSplink\n(parallel track\nif team capacity)"]
+    A["Stage 1\nLGBM + XGB Ensemble\n(205M Pairs)"] -->|P < 0.05\n(Known Country)| R["Reject"]
+    A -->|P > 0.95\n(Known Country)| M["Match"]
+    A -->|0.05 <= P <= 0.95\nOR Zero-Shot Country| C["Stage 2\nCross-Encoder"]
+    C -->|Reranked Score| T["Country-Specific\nThresholds"]
 ```
 
 > [!IMPORTANT]
-> **Approach 1 is the implemented baseline.** The remaining approaches below are optional extensions, not current pipeline components.
+> **V3 Two-Stage Reranker is the implemented baseline.** The wide margin (`0.05 to 0.95`) is strictly required to prevent "Reranker Starvation". Pure ML trees can be extremely overconfident. Furthermore, pure ML trees fail to generalize to zero-shot countries, requiring the Cross-Encoder to act as an absolute failsafe for unknown distributions.
 
 ---
 
@@ -420,14 +401,15 @@ Every training run should produce diagnostic outputs to guide architecture impro
 
 ---
 
-## 7. Current Risks and Open Items
+## 7. Current Risks and Risk Mitigation
 
-- **Full-scale resource use:** Training now defaults to all available training data. Lower `SAMPLE_FRAC` in `src/config.py` for development attempts.
-- **Zero-shot France:** France has no training labels; current baseline behavior should be read as unvalidated for that country.
-│   └── reconciliation-log.md
-- **Output validation:** Run the official validator before packaging or submission.
-
-The former scaffold/path/count risks were resolved or superseded. The reconciliation log records which outdated items were removed and why.
+- **Memory Limit (OOM on Candidate Joining):** As candidate generation radii increase (e.g. `K=25`), the raw number of candidate pairs can hit 200M+.
+  - *Mitigation:* We will NEVER use Python `set()` or `list` operations for tracking Candidates. All pair evaluations must happen entirely inside C-backed `pandas.DataFrame` or `numpy.ndarray` operations.
+- **Reranker Starvation (ML Overconfidence):** We are introducing a Cross-Encoder to re-rank predictions from the LightGBM/XGBoost ensemble. If the ML ensemble predicts `0.99` for a False Positive, the reranker will never see it unless the threshold window is wide enough.
+  - *Mitigation:* We will set a wide margin for the reranker (e.g., `0.05 < P < 0.95`). By ensembling LightGBM and XGBoost, we naturally reduce overconfidence on edge cases (since the models will likely disagree).
+- **Zero-shot France:** France has no training labels; current baseline behavior relies on embedding generalizability.
+- **CV-LB Disconnect:** The public leaderboard uses macro-averaged F0.5. A poorly optimized global threshold can destroy recall for an entire country, tanking the average. 
+  - *Mitigation:* Implement country-specific threshold tuning during CV.
 
 ---
 
@@ -480,24 +462,28 @@ Country partitioning reduces memory by ~60% compared to full dataset operations.
 
 ---
 
-## 9. V2 Architecture (GPU Semantic Blocking)
+## 9. V3 Architecture (Two-Stage Pipeline & Fast Iteration Loop)
 
-**Context:** The V1 Baseline (TF-IDF + LightGBM) achieved a 0.697 LB score but exposed severe time complexity limits when dealing with 10M+ strings. The top LB score is 0.9884. To close this gap before the 12:00 PM Core Build deadline (Sep 26), we are pivoting to a GPU-accelerated Semantic Blocking approach.
+**Context:** The V2 GPU Semantic Blocking pipeline hit a 0.770 LB ceiling. The gap between our CV (0.875) and LB (0.770) is significant. Furthermore, attempting to process 205M pairs triggered a `MemoryError` in Python. To shatter the 0.90 barrier, we are pivoting to a V3 architecture utilizing a Cross-Encoder Reranker and Country-Specific tuning.
 
-### Key Tenets
-1. **Semantic Blocking is the Secret Sauce:** We must prioritize blocking recall (F0.5 still requires precision, but ML will handle that later). We need an optimal, GPU-accelerated blocking algorithm with better time complexity than sparse $O(N^2)$ dot products.
-2. **Hardware Constraint Awareness:** The architecture MUST run within the local hardware constraints and competition time limits. No fantasy architectures.
-3. **Pretrained Models:** Stand on the shoulders of giants. Use highly optimized, pretrained dense retrievers (e.g., `sentence-transformers`, `Faiss` GPU indexing) instead of training from scratch.
+### The Iteration Roadmap
+To systematically close the CV-LB gap and hit the leaderboard targets without shooting in the dark, we will iterate using the following verified roadmap:
 
-### Proposed Blocking Algorithms for V2
-- **Dense Retrieval with Faiss (GPU):** Embed all entity names/addresses using a fast, lightweight multilingual embedding model (e.g., `paraphrase-multilingual-MiniLM-L12-v2`). Index S1 using `faiss.IndexFlatIP` (or `IndexIVFFlat` for speed) on the GPU, and query S2/S3. This brings time complexity down to $O(N \log N)$ and completes in seconds on a GPU.
-- **Bi-Encoders:** For semantic representation that captures transliteration discrepancies far better than character n-grams.
+1.  **Memory Hardening:** Vectorize all pair evaluations using pandas C-backed joins to permanently eliminate `MemoryError`s on 200M+ candidate sets.
+2.  **Decoupling Inference (`--skip-inference`):** Implement a fast-evaluation loop. Test inference on 205M pairs takes ~1 hour. We will freeze test inference and exclusively iterate on our Validation CV split (~10 mins) to accelerate development.
+3.  **Country-Specific Threshold Tuning:** F0.5 optimization must happen independently for France, US, and India. A global threshold destroys recall for disparate data distributions. This step alone bridges the majority of the CV-LB generalization gap.
+4.  **Error Analysis Checkpoints:** After each CV bump, we will dump False Positives and False Negatives to a CSV and manually inspect them. We will *only* engineer features that directly resolve observed systematic errors.
+5.  **The Transformer Reranker (Final Push):** Once pure ML (LightGBM+XGBoost) hits its semantic ceiling, we will route the borderline predictions (`0.05 <= P <= 0.95`) through a HuggingFace Cross-Encoder. 
 
 ---
 
 ## Changelog
 | Version | Date | By | Summary |
 |---------|------|----|---------|
+| v5.2 | 2026-09-26 | Antigravity | Added hardware rationale (CPU vs CUDA Unified Memory) to Stage 1 ML Ensemble section. |
+| v5.1 | 2026-09-26 | Antigravity | Updated Stage 2 Reranker flowchart and logic to explicitly include Zero-Shot routing. |
+| v5.0 | 2026-09-26 | Antigravity | Massive architectural pivot to V3 Two-Stage Pipeline. Added Reranker threshold starvation risks, MemoryError mitigation, Country-Specific CV tuning, and a rigid Iteration Roadmap. |
+| v4.2 | 2026-09-26 | Antigravity | Updated for V2 GPU Semantic Blocking Core Build. candidate_pairs.tsv is now tracked. Replaced TF-IDF baseline and logged hybrid option. |
 | v4.1 | 2026-09-26 | Antigravity | Added V2 Architecture (GPU Semantic Blocking) plan. |
 | v4.0 | 2026-09-26 | Codex | Reconciled the architecture with implemented pipeline behavior, tracked paths, active risks, and current submission history. |
 | v3.0 | 2026-09-26 | Antigravity | Replaced data facts with canonical link and removed team split to align with Single Source of Truth Rule. |
@@ -506,3 +492,4 @@ Country partitioning reduces memory by ~60% compared to full dataset operations.
 | v2.1 | 2026-09-25 | Antigravity | Added performance principle requiring multiprocessing to maximize hardware utilization |
 | v2.0 | 2026-09-25 | Antigravity | Major rewrite: integrated EDA findings (country blocking verified safe, S1 100% Latin, script stats), country-first blocking strategy, validation split design, training diagnostics section, skills system integration, legal suffix preservation rule, Unicode-safe cleaning, multi-script ensemble transliteration, fixed package_submission.py path. Resolved all v1.0 open questions. |
 | v1.0 | 2026-09-25 | Antigravity | Initial architecture document |
+

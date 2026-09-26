@@ -23,6 +23,7 @@ Add a new row to the table below **immediately after submitting** to the leaderb
 |---|-----------------|------------------|-----------------------|--------|-------------|-------|
 | 1 | 2026-09-25 23:45 | Baseline Emergency (France only) | 0.153 | `12345` | USER | S2/S3 matches for US/India were forcefully empty to beat deadline |
 | 2 | 2026-09-26 01:00 | Baseline Full (All countries) | 0.697 | `HEAD` | USER | 94M pair full inference completed. Validated clean duplicates |
+| 3 | 2026-09-26 11:08 | V2 GPU Semantic Blocking (K=10) | 0.770 | `HEAD` | USER | Huge precision, but strict K=10 hard-capped max recall causing macro-average penalties. |
 
 ---
 
@@ -30,9 +31,9 @@ Add a new row to the table below **immediately after submitting** to the leaderb
 
 | Metric | Value |
 |--------|-------|
-| **Best Public Score** | 0.697 |
-| **Submission #** | 2 |
-| **Approach** | Baseline Full Pipeline |
+| **Best Public Score** | 0.770 |
+| **Submission #** | 3 |
+| **Approach** | V2 GPU Semantic Blocking (K=10) |
 | **Commit** | `HEAD` |
 
 > ⚠️ **Before making a new submission:** Check that your local CV score is competitive with the current best. Don't waste submissions on regressions.
@@ -43,5 +44,6 @@ Add a new row to the table below **immediately after submitting** to the leaderb
 
 | Version | Date | By | Summary |
 |---------|------|----|---------|
+| v1.2 | 2026-09-26 | Antigravity | Logged submission #3 (0.770) |
 | v1.1 | 2026-09-26 | Antigravity | Logged submissions #1 (0.153) and #2 (0.697) |
 | v1.0 | 2026-09-25 | Member 1 | Initial skeleton created |

@@ -1,4 +1,4 @@
-> **Version:** v2.2 | **Last updated:** 2026-09-26 02:30 IST | **By:** Codex
+> **Version:** v2.3 | **Last updated:** 2026-09-26 03:49 IST | **By:** Antigravity
 
 # Problem Statement & Data
 
@@ -78,9 +78,9 @@ Two tab-separated files in `SUBMISSION/output/`:
 - Exactly 1,732,544 rows (one per S1 test entity)
 - No duplicate IDs within a list, no duplicate S1 rows
 
-### `candidate_pairs.tsv` (audit only, not scored)
+### `candidate_pairs.tsv` (scored in final ranking)
 
-Same format, column `candidate_entity_ids` — the candidate set before final matching.
+Same format, column `candidate_entity_ids` — the candidate set before final matching. **Candidate generation counts toward the final ranking.** The approach that generates a smaller candidate set per Source 1 entity will be ranked higher in the final evaluation.
 
 ### Validation
 
@@ -139,6 +139,7 @@ python ../data/6ab10eb3b23ba_student_resource/student_resource/utils/validate_su
 
 | Version | Date | By | Summary |
 |---------|------|----|---------|
+| v2.3 | 2026-09-26 | Antigravity | Updated candidate_pairs.tsv rules: candidate sets are tracked and smaller sets rank higher in the final evaluation. |
 | v2.2 | 2026-09-26 | Codex | Corrected validator command paths and verified row counts against all local TSVs, excluding headers. |
 | v2.1 | 2026-09-26 | Codex | Corrected case-sensitive research/data paths and verified row counts against all local TSVs, excluding headers. |
 | v2.0 | 2026-09-26 | Antigravity | Consolidated file paths to environment-setup.md to comply with Single Source of Truth Rule. |

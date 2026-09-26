@@ -25,19 +25,9 @@ def sweep_threshold(
     ground_truth: dict[str, set[str]],
     all_s1_ids: set[str] | None = None,
     threshold_range: tuple[float, float, float] | None = None,
-) -> tuple[float, float]:
+) -> tuple[dict[str, float], float]:
     """
-    Sweep probability threshold to maximize F₀.₅ on validation set.
-
-    Args:
-        pairs_df: Candidate pairs DataFrame
-        probabilities: Match probabilities from model
-        ground_truth: {s1_id: set of true match ids}
-        all_s1_ids: Set of all S1 entity IDs (for singleton handling)
-        threshold_range: (min, max, step) for sweep
-
-    Returns:
-        (best_threshold, best_f05)
+    Sweep probability threshold per country to maximize F₀.₅ on validation set.
     """
     if threshold_range is None:
         threshold_range = (THRESHOLD_MIN, THRESHOLD_MAX, THRESHOLD_STEP)
@@ -48,34 +38,111 @@ def sweep_threshold(
     if all_s1_ids is None:
         all_s1_ids = set(ground_truth.keys())
 
-    best_threshold = 0.5
-    best_f05 = 0.0
+    print(f"[threshold] Sweeping {len(thresholds)} thresholds [{tmin:.2f}, {tmax:.2f}] per country ...")
 
-    print(f"[threshold] Sweeping {len(thresholds)} thresholds [{tmin:.2f}, {tmax:.2f}] ...")
+    best_thresholds = {}
+    
+    # [OPTIMIZATION] Pre-sort AND pre-dedupe to enforce 1:1 constraint globally!
+    print(f"  [optim] Pre-sorting and deduping {len(pairs_df):,} candidate pairs...")
+    sorted_df = pairs_df.copy()
+    sorted_df['prob'] = probabilities
+    sorted_df = sorted_df.sort_values('prob', ascending=False)
+    deduped_df = sorted_df.drop_duplicates(subset='s2s3_id', keep='first')
+    print(f"  [optim] Deduped down to {len(deduped_df):,} valid 1:1 pairs.")
+    
+    from collections import defaultdict
+    t_values = sorted(thresholds, reverse=True)
+    
+    if 'country' in sorted_df.columns:
+        countries = sorted_df['country'].unique()
+        for country in countries:
+            print(f"  Optimizing for {country} ...")
+            c_pairs = deduped_df[deduped_df['country'] == country]
+            
+            c_s1_set = set(c_pairs['s1_id'])
+            c_gt = {k: v for k, v in ground_truth.items() if k in c_s1_set}
+            if len(c_gt) == 0:
+                c_gt = ground_truth
+            c_all_s1_ids = {k for k in all_s1_ids if k in c_gt} or all_s1_ids
+            
+            s1_ids = c_pairs['s1_id'].values
+            s2s3_ids = c_pairs['s2s3_id'].values
+            probs = c_pairs['prob'].values
+            
+            predictions = defaultdict(set)
+            best_t = 0.5
+            best_c_f05 = 0.0
+            current_idx = 0
+            
+            for t in t_values:
+                next_idx = np.searchsorted(-probs, -t, side='right')
+                for i in range(current_idx, next_idx):
+                    predictions[s1_ids[i]].add(s2s3_ids[i])
+                current_idx = next_idx
+                
+                c_f05 = _compute_f05_macro(predictions, c_gt, c_all_s1_ids)
+                if c_f05 > best_c_f05:
+                    best_c_f05 = c_f05
+                    best_t = t
+                    
+            best_thresholds[country] = best_t
+            print(f"    Best {country} threshold: {best_t:.3f} -> F0.5 = {best_c_f05:.4f}")
+    else:
+        # Fallback to global sweep
+        s1_ids = deduped_df['s1_id'].values
+        s2s3_ids = deduped_df['s2s3_id'].values
+        probs = deduped_df['prob'].values
+        
+        predictions = defaultdict(set)
+        best_t = 0.5
+        best_f05 = 0.0
+        current_idx = 0
+        
+        for t in t_values:
+            next_idx = np.searchsorted(-probs, -t, side='right')
+            for i in range(current_idx, next_idx):
+                predictions[s1_ids[i]].add(s2s3_ids[i])
+            current_idx = next_idx
+            
+            f05 = _compute_f05_macro(predictions, ground_truth, all_s1_ids)
+            if f05 > best_f05:
+                best_f05 = f05
+                best_t = t
+        best_thresholds = best_t
 
-    for t in thresholds:
-        predictions = _apply_threshold_and_constraint(pairs_df, probabilities, t)
-        f05 = _compute_f05_macro(predictions, ground_truth, all_s1_ids)
-        if f05 > best_f05:
-            best_f05 = f05
-            best_threshold = t
-
-    print(f"[threshold] Best threshold: {best_threshold:.3f} -> F0.5 = {best_f05:.4f}")
-    return best_threshold, best_f05
+    # Compute final combined F0.5
+    final_preds = _apply_threshold_and_constraint(pairs_df, probabilities, best_thresholds)
+    final_f05 = _compute_f05_macro(final_preds, ground_truth, all_s1_ids)
+    
+    print(f"[threshold] Final Global F0.5 with optimized thresholds: {final_f05:.4f}")
+    return best_thresholds, final_f05
 
 
 def _apply_threshold_and_constraint(
     pairs_df: pd.DataFrame,
     probabilities: np.ndarray,
-    threshold: float,
+    threshold: float | dict[str, float],
 ) -> dict[str, set[str]]:
     """
     Apply threshold + one-to-one constraint (each S2/S3 → at most 1 S1).
 
     Returns: {s1_id: set of matched s2s3 ids}
     """
-    # Filter by threshold
-    mask = probabilities >= threshold
+    if isinstance(threshold, dict):
+        mask = np.zeros(len(pairs_df), dtype=bool)
+        mean_t = float(np.mean(list(threshold.values()))) if threshold else 0.5
+        
+        # Identify countries in the dataset
+        present_countries = pairs_df['country'].unique()
+        
+        for country in present_countries:
+            c_mask = pairs_df['country'] == country
+            # Use specific threshold if known, else fallback to global average
+            t = threshold.get(country, mean_t)
+            mask[c_mask] = probabilities[c_mask] >= t
+    else:
+        mask = probabilities >= threshold
+        
     accepted = pairs_df[mask].copy()
     accepted['prob'] = probabilities[mask]
 
@@ -139,7 +206,7 @@ def _f05_single(predicted: set, true: set) -> float:
 def format_and_save_output(
     pairs_df: pd.DataFrame,
     probabilities: np.ndarray,
-    threshold: float,
+    threshold: float | dict[str, float],
     all_s1_ids: list[str] | set[str] | pd.Series,
     output_dir: str | os.PathLike | None = None,
     append_mode: bool = False,
@@ -182,7 +249,7 @@ def format_and_save_output(
     write_header = not append_mode
     matching_df.to_csv(matching_path, sep='\t', index=False, mode=write_mode, header=write_header)
 
-    n_matched = sum(1 for _, r in matching_df.iterrows() if r['matched_entity_ids'])
+    n_matched = (matching_df['matched_entity_ids'] != '').sum()
     n_singleton = len(matching_df) - n_matched
     print(f"[output] matching_results.tsv: {len(matching_df):,} rows "
           f"({n_matched:,} matched, {n_singleton:,} singletons) -> {matching_path}")
